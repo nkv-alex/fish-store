@@ -36,7 +36,24 @@ El schema Prisma está en [prisma/schema.prisma](./prisma/schema.prisma). `Produ
    npm run dev
    ```
 
-La tienda estará en [http://localhost:3000](http://localhost:3000). Para usar Neon, sustituye `DATABASE_URL` por la cadena de conexión pooled del proyecto y conserva `sslmode=require`. El formulario crea una sesión de Stripe Checkout; el cliente no envía precios y el total se calcula con datos de la base de datos. Usa las claves `sk_test_...` y `whsec_...` de Stripe; esta demo rechaza claves Stripe live. Para probar el webhook localmente, ejecuta `stripe listen --forward-to localhost:3000/api/webhooks/stripe` y copia el secreto que Stripe CLI imprime a `STRIPE_WEBHOOK_SECRET`. El pedido solo se marca como pagado tras validar el pago completado.
+La tienda estará en [http://localhost:3000](http://localhost:3000). Para desarrollo local, `DATABASE_URL` y `DIRECT_URL` apuntan al PostgreSQL de Docker. En Neon, la app usa `DATABASE_URL` (conexión pooled) y Prisma CLI usa `DIRECT_URL` (conexión directa para migraciones); la selección del adaptador es automática por hostname.
+
+### Conectar Neon con Vercel
+
+1. En Vercel, abre el proyecto y ve a **Storage** → **Create Database** → **Neon Postgres**. Crea la base y conéctala a `fish-store` al menos para **Production** (y Preview si vas a usar esas vistas previas).
+2. En Neon, abre **Connect** y copia las dos cadenas de la misma rama/base/rol. Usa la cadena **pooled** como `DATABASE_URL` y la cadena **direct** (sin `-pooler` en el host) como `DIRECT_URL`. Guárdalas en Vercel → **Settings** → **Environment Variables** para Production (y Preview si corresponde). No pongas las cadenas en el código ni las compartas públicamente.
+3. Para crear el esquema y los productos iniciales, configura ambas variables en tu `.env` local (no sobrescribas las claves Stripe) y ejecuta:
+
+   ```bash
+   npm run db:deploy
+   npm run db:seed
+   ```
+
+4. Redeploya la aplicación. Comprueba `https://fish-store-jet.vercel.app/api/products`: debería responder con el catálogo en JSON.
+
+Vercel/Neon no puede crear la base por el mero hecho de conocer la URL de la web; el paso de **Storage** requiere que inicies sesión y autorices la integración en tu cuenta. Si la integración completa ya añadió `DATABASE_URL`, añade manualmente `DIRECT_URL` desde Neon para que las migraciones usen una conexión directa.
+
+El formulario crea una sesión de Stripe Checkout; el cliente no envía precios y el total se calcula con datos de la base de datos. Usa las claves `sk_test_...` y `whsec_...` de Stripe; esta demo rechaza claves Stripe live. Para probar el webhook localmente, ejecuta `stripe listen --forward-to localhost:3000/api/webhooks/stripe` y copia el secreto que Stripe CLI imprime a `STRIPE_WEBHOOK_SECRET`. El pedido solo se marca como pagado tras validar el pago completado.
 
 Al cambiar `prisma/schema.prisma`, genera una migración con `npm run db:migrate -- --name nombre_del_cambio`; aplica las migraciones pendientes localmente con `npm run db:deploy`.
 

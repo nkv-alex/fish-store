@@ -1,3 +1,4 @@
+import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
 
@@ -10,9 +11,17 @@ export function getPrisma(): PrismaClient {
   if (!connectionString) {
     throw new Error("DATABASE_URL is required to access the database.");
   }
+  if (globalForPrisma.prisma) {
+    return globalForPrisma.prisma;
+  }
 
-  globalForPrisma.prisma ??= new PrismaClient({
-    adapter: new PrismaPg({ connectionString }),
+  const hostname = new URL(connectionString).hostname;
+  const adapter = hostname.endsWith(".neon.tech")
+    ? new PrismaNeon({ connectionString })
+    : new PrismaPg({ connectionString, max: 1 });
+
+  globalForPrisma.prisma = new PrismaClient({
+    adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
