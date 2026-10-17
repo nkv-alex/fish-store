@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { getPrisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe";
+import { authOptions } from "@/lib/auth";
 
 const checkoutSchema = z.object({
   email: z.email(),
@@ -42,6 +44,8 @@ export async function POST(request: Request) {
 
   try {
     const prisma = getPrisma();
+    const userSession = await getServerSession(authOptions);
+    const email = userSession?.user.email ?? parsed.data.email;
     const products = await prisma.product.findMany({
       where: { id: { in: [...quantities.keys()] }, isActive: true },
     });
@@ -58,7 +62,8 @@ export async function POST(request: Request) {
     );
     const order = await prisma.order.create({
       data: {
-        email: parsed.data.email,
+        email,
+        userId: userSession?.user.id,
         total,
         currency: products[0].currency,
         items: {
@@ -74,7 +79,7 @@ export async function POST(request: Request) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
     const session = await getStripe().checkout.sessions.create({
       mode: "payment",
-      customer_email: parsed.data.email,
+      customer_email: email,
       line_items: products.map((product) => ({
         quantity: quantities.get(product.id),
         price_data: {
@@ -88,7 +93,7 @@ export async function POST(request: Request) {
       })),
       metadata: { orderId: order.id },
       success_url: `${baseUrl}/order/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/order/cancelled`,
+      cancel_url: `${baseUrl}/`,
     });
 
     if (!session.url) {

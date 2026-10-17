@@ -1,4 +1,4 @@
-# Marea Store
+# Pezcado
 
 Tienda de ejemplo con Next.js, TypeScript, PostgreSQL, Prisma y Stripe Checkout en modo test.
 
@@ -36,7 +36,19 @@ El schema Prisma está en [prisma/schema.prisma](./prisma/schema.prisma). `Produ
    npm run dev
    ```
 
-La tienda estará en [http://localhost:3000](http://localhost:3000). Para desarrollo local, `DATABASE_URL` y `DIRECT_URL` apuntan al PostgreSQL de Docker. En Neon, la app usa `DATABASE_URL` (conexión pooled) y Prisma CLI usa `DIRECT_URL` (conexión directa para migraciones); la selección del adaptador es automática por hostname.
+La tienda estará en [http://localhost:3000](http://localhost:3000). `npm run dev` mantiene Next.js en primer plano: no cierres esa terminal si quieres que la app siga activa. Para dejarla ejecutándose en segundo plano y reiniciarla si el contenedor falla, usa Docker Compose:
+
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose logs -f app
+```
+
+Para detenerla explícitamente, usa `docker compose down`. Para desarrollo local, `DATABASE_URL` y `DIRECT_URL` apuntan al PostgreSQL de Docker. En Neon, la app usa `DATABASE_URL` (conexión pooled) y Prisma CLI usa `DIRECT_URL` (conexión directa para migraciones); la selección del adaptador es automática por hostname.
+
+### Autenticación
+
+La ruta `/account` permite registrarse e iniciar sesión con correo y contraseña o con Google OAuth. Las contraseñas se guardan como hashes bcrypt (nunca reversiblemente cifradas ni en texto plano). Para Google, crea un OAuth client de tipo Web y configura `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_SECRET` y `NEXTAUTH_URL=https://fish-store-jet.vercel.app` como variables en Vercel. Añade a los URI de redirección autorizados `https://fish-store-jet.vercel.app/api/auth/callback/google` y, para desarrollo, `http://localhost:3000/api/auth/callback/google`. Genera el secreto con `openssl rand -base64 32`. El login por contraseña funciona aunque Google no esté configurado. Los pedidos hechos con una sesión iniciada quedan asociados a la cuenta y aparecen en `/orders`.
 
 ### Conectar Neon con Vercel
 
@@ -49,9 +61,11 @@ La tienda estará en [http://localhost:3000](http://localhost:3000). Para desarr
    npm run db:seed
    ```
 
-4. Redeploya la aplicación. Comprueba `https://fish-store-jet.vercel.app/api/products`: debería responder con el catálogo en JSON.
+4. Deja el Build Command de Vercel en su valor predeterminado para que detecte `vercel-build`. En producción, ese script ejecuta `prisma migrate deploy` usando `DIRECT_URL` y luego el seed idempotente; las previews no escriben en la base de producción. Redeploya la aplicación. Comprueba `https://fish-store-jet.vercel.app/api/products`: debería responder con el catálogo en JSON.
 
 Vercel/Neon no puede crear la base por el mero hecho de conocer la URL de la web; el paso de **Storage** requiere que inicies sesión y autorices la integración en tu cuenta. Si la integración completa ya añadió `DATABASE_URL`, añade manualmente `DIRECT_URL` desde Neon para que las migraciones usen una conexión directa.
+
+Después de añadir o cambiar modelos Prisma, la migración se ejecutará automáticamente en el siguiente despliegue de producción. El seed actualiza el catálogo de demostración de forma idempotente y desactiva los productos de ejemplo anteriores sin borrar productos ni pedidos.
 
 El formulario crea una sesión de Stripe Checkout; el cliente no envía precios y el total se calcula con datos de la base de datos. Usa las claves `sk_test_...` y `whsec_...` de Stripe; esta demo rechaza claves Stripe live. Para probar el webhook localmente, ejecuta `stripe listen --forward-to localhost:3000/api/webhooks/stripe` y copia el secreto que Stripe CLI imprime a `STRIPE_WEBHOOK_SECRET`. El pedido solo se marca como pagado tras validar el pago completado.
 
@@ -60,10 +74,10 @@ Al cambiar `prisma/schema.prisma`, genera una migración con `npm run db:migrate
 Para levantar app y base de datos en contenedores:
 
 ```bash
-docker compose up --build
+docker compose up -d --build
 ```
 
-El contenedor aplica las migraciones al iniciar. Ejecuta el seed una vez después de que el servicio esté listo con `docker compose exec app npm run db:seed`.
+El contenedor aplica las migraciones al iniciar y Compose lo reinicia si se detiene inesperadamente. Sigue su salida con `docker compose logs -f app`. Ejecuta el seed una vez después de que el servicio esté listo con `docker compose exec app npm run db:seed`.
 
 ## Pruebas y CI
 

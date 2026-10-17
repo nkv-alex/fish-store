@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { AuthSessionProvider } from "@/components/auth-session-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Marea — essentials for the coast",
-  description: "Una pequeña tienda de ejemplo con pagos seguros en Stripe.",
+  title: "Pezcado — pescado de procedencia cuestionable",
+  description: "Pescadería fina. Procedencia cuestionable. Pago seguro.",
 };
 
 export default function RootLayout({
@@ -13,7 +14,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        <AuthSessionProvider>{children}</AuthSessionProvider>
+      </body>
     </html>
   );
 }
