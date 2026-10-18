@@ -6,11 +6,15 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 FROM base AS builder
+ARG DEPLOYMENT_VERSION
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV DEPLOYMENT_VERSION=$DEPLOYMENT_VERSION
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
-RUN npm run build
+RUN AUTH_SECRET=build-only-placeholder \
+    DATABASE_URL=postgresql://build:build@localhost:5432/build \
+    npm run build
 
 FROM base AS runner
 ENV NODE_ENV=production

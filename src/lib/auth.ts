@@ -27,8 +27,18 @@ const providers: NextAuthOptions["providers"] = [
       if (!parsed.success) return null;
 
       const email = parsed.data.email.trim().toLowerCase();
-      const user = await getPrisma().user.findUnique({ where: { email } });
-      if (!user?.passwordHash) return null;
+      const user = await getPrisma().user.findUnique({
+        where: { email },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+          passwordHash: true,
+          isActive: true,
+        },
+      });
+      if (!user?.passwordHash || !user.isActive) return null;
 
       const validPassword = await compare(parsed.data.password, user.passwordHash);
       if (!validPassword) return null;
@@ -67,13 +77,63 @@ export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
   pages: { signIn: "/account" },
   callbacks: {
+    async signIn({ user }) {
+      if (!user.id) return false;
+      const currentUser = await getPrisma().user.findUnique({
+        where: { id: user.id },
+        select: { isActive: true },
+      });
+      return Boolean(currentUser?.isActive);
+    },
     async jwt({ token, user }) {
-      if (user) token.userId = user.id;
+      if (user) {
+        token.userId = user.id;
+        delete token.authVersion;
+      }
+      if (!token.userId) return token;
+
+      const currentUser = await getPrisma().user.findUnique({
+        where: { id: token.userId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          authVersion: true,
+          role: true,
+          isActive: true,
+        },
+      });
+      if (
+        !currentUser ||
+        !currentUser.isActive ||
+        (!user && token.authVersion === undefined) ||
+        (token.authVersion !== undefined &&
+          token.authVersion !== currentUser.authVersion)
+      ) {
+        delete token.userId;
+        delete token.authVersion;
+        delete token.name;
+        delete token.email;
+        delete token.role;
+        return token;
+      }
+
+      token.userId = currentUser.id;
+      token.authVersion = currentUser.authVersion;
+      token.name = currentUser.name;
+      token.email = currentUser.email;
+      token.role = currentUser.role;
       return token;
     },
     async session({ session, token }) {
-      if (session.user && token.userId) {
-        session.user.id = token.userId;
+      if (session.user) {
+        session.user.id = token.userId ?? "";
+        session.user.role = token.role ?? "USER";
+        if (!token.userId) {
+          session.user.name = null;
+          session.user.email = null;
+          session.user.role = "USER";
+        }
       }
       return session;
     },

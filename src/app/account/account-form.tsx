@@ -7,7 +7,12 @@ import { useState } from "react";
 
 type AccountFormProps = {
   googleEnabled: boolean;
-  user: { name: string | null | undefined; email: string | null | undefined } | null;
+  user: {
+    id: string;
+    name: string | null | undefined;
+    email: string | null | undefined;
+    role: "USER" | "ADMIN";
+  } | null;
 };
 
 export default function AccountForm({ googleEnabled, user }: AccountFormProps) {
@@ -98,7 +103,7 @@ export default function AccountForm({ googleEnabled, user }: AccountFormProps) {
     }
   }
 
-  if (user) {
+  if (user?.id) {
     return (
       <section className="account-card account-signed-in" aria-label="Tu cuenta">
         <div className="confirmation-mark">✓</div>
@@ -106,6 +111,8 @@ export default function AccountForm({ googleEnabled, user }: AccountFormProps) {
         <h2>Hola, {user.name || user.email}.</h2>
         <p>{user.email}</p>
         <div className="account-nav">
+          <Link href="/account/settings">Gestionar mi cuenta</Link>
+          {user.role === "ADMIN" && <Link href="/admin/accounts">Panel de administración</Link>}
           <Link href="/orders">Ver mis pedidos</Link>
           <Link href="/#productos">Volver a la lonja</Link>
         </div>

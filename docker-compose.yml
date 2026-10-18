@@ -16,20 +16,51 @@ services:
       timeout: 5s
       retries: 10
 
+  migrate:
+    build:
+      context: .
+      args:
+        DEPLOYMENT_VERSION: ${DEPLOYMENT_VERSION:-local}
+    profiles: ["maintenance"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://postgres:postgres@db:5432/fish_store?schema=public"
+      DIRECT_URL: "postgresql://postgres:postgres@db:5432/fish_store?schema=public"
+    command: ["npm", "run", "db:deploy"]
+
   app:
-    build: .
+    build:
+      context: .
+      args:
+        DEPLOYMENT_VERSION: ${DEPLOYMENT_VERSION:-local}
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/fish_store?schema=public
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_replace_me}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_replace_me}
-      NEXT_PUBLIC_APP_URL: http://localhost:3000
-    command: ["sh", "-c", "npm run db:deploy && node server.js"]
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_replace_me}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-1}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET to the same strong value on every app server}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_URL_INTERNAL: ${NEXTAUTH_URL_INTERNAL:-http://app:3000}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    command: ["node", "server.js"]
     ports:
       - "3000:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://localhost:3000/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 volumes:
   postgres_data:

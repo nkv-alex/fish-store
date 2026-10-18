@@ -4,7 +4,7 @@ Tienda de ejemplo con Next.js, TypeScript, PostgreSQL, Prisma y Stripe Checkout 
 
 ## Modelo de datos
 
-El schema Prisma está en [prisma/schema.prisma](./prisma/schema.prisma). `Product` guarda precio en unidades menores (centavos) y moneda; `Order` conserva correo, total, estado y referencia única de Stripe. `OrderItem` registra cantidad y precio unitario al comprar para preservar el importe histórico. `User` es opcional para el pedido, de modo que el checkout de ejemplo permite comprar como invitado.
+El schema Prisma está en [prisma/schema.prisma](./prisma/schema.prisma). `Product` guarda precio en unidades menores (centavos) y moneda; `Order` conserva correo, total, estado y referencia única de Stripe. `OrderItem` registra cantidad y precio unitario al comprar para preservar el importe histórico. El checkout requiere una cuenta y asocia los pedidos con ella.
 
 ## Requisitos
 
@@ -39,7 +39,11 @@ El schema Prisma está en [prisma/schema.prisma](./prisma/schema.prisma). `Produ
 La tienda estará en [http://localhost:3000](http://localhost:3000). `npm run dev` mantiene Next.js en primer plano: no cierres esa terminal si quieres que la app siga activa. Para dejarla ejecutándose en segundo plano y reiniciarla si el contenedor falla, usa Docker Compose:
 
 ```bash
-docker compose up -d --build
+openssl rand -base64 32
+# Guarda el resultado como AUTH_SECRET en .env antes de iniciar Compose.
+docker compose up -d db
+docker compose run --rm migrate
+docker compose up -d --build app
 docker compose ps
 docker compose logs -f app
 ```
@@ -50,7 +54,25 @@ Para detenerla explícitamente, usa `docker compose down`. Para desarrollo local
 
 La ruta `/account` permite registrarse e iniciar sesión con correo y contraseña o con Google OAuth. Las contraseñas se guardan como hashes bcrypt (nunca reversiblemente cifradas ni en texto plano), y el formulario de registro pide confirmar la contraseña. Para Google, crea un OAuth client de tipo Web y configura `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_SECRET` y `NEXTAUTH_URL=https://fish-store-jet.vercel.app` como variables en Vercel. En Google Cloud Console → **APIs & Services** → **Credentials** → tu OAuth client → **Authorized redirect URIs**, añade `https://fish-store-jet.vercel.app/api/auth/callback/google`; para desarrollo local añade `http://localhost:3000/api/auth/callback/google`. La URI debe usar el mismo dominio que `NEXTAUTH_URL` y no lleva barra final. Genera el secreto con `openssl rand -base64 32`. El login por contraseña funciona aunque Google no esté configurado. Es necesario iniciar sesión o crear una cuenta para comprar; los pedidos quedan asociados a la cuenta y aparecen en `/orders`.
 
-Las páginas informativas están disponibles en `/privacy`, `/cookies` y `/terms`. Sus textos son un borrador basado en las funciones actuales de la aplicación. Antes de publicar o aceptar ventas, completa y verifica la identidad legal y contacto del titular, los territorios de venta y las condiciones de envío, desistimiento, devoluciones y reembolsos con asesoramiento adecuado.
+En `/account/settings` se puede actualizar el nombre, cambiar o añadir una contraseña y eliminar la cuenta. Al eliminarla, los pedidos se conservan por obligación operativa, se desvinculan de la cuenta y se anonimiza su correo. Cambiar la contraseña incrementa la versión de autenticación y revoca las sesiones existentes.
+
+El panel `/admin/accounts` permite a administradores buscar y paginar cuentas, cambiar roles y desactivar/reactivar accesos. Los cambios revocan las sesiones de esa cuenta; no se permite modificar la cuenta propia ni quitar el acceso al último administrador activo. Las cuentas nuevas empiezan como usuarios normales. Para crear el primer administrador, registra primero esa cuenta en la tienda y, con `DATABASE_URL` apuntando a la base de producción, ejecuta una vez:
+
+```bash
+npm run db:promote-admin -- admin@example.com
+```
+
+El comando activa la cuenta existente, le concede rol de administrador e invalida sus sesiones para que vuelva a iniciar sesión. No permite crear cuentas ni asignar roles desde el registro público.
+
+### Balanceadores y varias instancias
+
+La aplicación no necesita sesiones sticky: las sesiones JWT se validan en cualquier instancia. Configura todas las instancias con el mismo `AUTH_SECRET`, el mismo `DATABASE_URL` y la misma `NEXTAUTH_URL` pública, por ejemplo `https://tienda.example.com`; configura también `NEXT_PUBLIC_APP_URL` con la URL pública para enlaces y redirecciones. `NEXTAUTH_URL_INTERNAL` puede apuntar al servicio interno al que el proxy enruta (en Compose, `http://app:3000`). La URL pública debe usar HTTPS detrás de un balanceador TLS.
+
+Configura el proxy (Nginx, ALB, Cloudflare u otro) para reenviar `Host`, `X-Forwarded-Host` y `X-Forwarded-Proto`, conservar las cookies y dirigir tráfico a instancias sanas. Usa `GET /api/health/live` para comprobar que el proceso responde y `GET /api/health/ready` para comprobar que también puede consultar la base de datos; el readiness responde `503` si la base de datos no está disponible. No expongas las instancias directamente a Internet.
+
+Todas las instancias deben compartir una única base de datos PostgreSQL y ejecutar el mismo artefacto Docker construido una sola vez. Ejecuta `npm run db:deploy` **una sola vez por despliegue**, antes de activar la nueva versión, y no simultáneamente desde cada instancia. En Compose, el servicio de mantenimiento permite hacerlo con `docker compose run --rm migrate`; después, despliega esa imagen en los hosts o réplicas administrados por tu orquestador. El servicio Compose incluido publica un único puerto local y es para desarrollo/una instancia; para múltiples réplicas, configura el puerto y health check del servicio en tu orquestador o en cada host detrás del balanceador. La CI publica una imagen con un `deploymentId` derivado del commit para manejar la navegación durante despliegues graduales. Ajusta `DATABASE_POOL_MAX` según el máximo de conexiones admitido por la base: el valor limita el pool de cada proceso PostgreSQL (1–100, predeterminado 1), así que el total aproximado es el valor multiplicado por el número de instancias. Para Neon, administra el pool a través de su URL pooled. La app no usa ISR ni invalidación de caché; si se incorporan esas funciones, configura un backend de caché compartido entre instancias.
+
+Las páginas informativas están disponibles en `/privacy`, `/cookies` y `/terms`. La autenticación utiliza las cookies técnicas de sesión de NextAuth; el panel de consentimiento permite aceptar solo las necesarias o activar las métricas propias. Las métricas opcionales guardan únicamente totales diarios por página, sin IP, identificador de visitante o datos de cuenta. Sus textos legales son un borrador basado en las funciones actuales. Antes de publicar o aceptar ventas, completa y verifica la identidad legal y contacto del titular, los territorios de venta y las condiciones de envío, desistimiento, devoluciones y reembolsos con asesoramiento adecuado.
 
 ### Conectar Neon con Vercel
 
@@ -63,23 +85,27 @@ Las páginas informativas están disponibles en `/privacy`, `/cookies` y `/terms
    npm run db:seed
    ```
 
-4. Deja el Build Command de Vercel en su valor predeterminado para que detecte `vercel-build`. En producción, ese script ejecuta `prisma migrate deploy` usando `DIRECT_URL` y luego el seed idempotente; las previews no escriben en la base de producción. Redeploya la aplicación. Comprueba `https://fish-store-jet.vercel.app/api/products`: debería responder con el catálogo en JSON.
+La migración `20261018162600_admin_accounts` añade a `User` el enum `role` (por defecto `USER`), el campo `isActive` (por defecto `true`) y un índice para filtrar cuentas; las cuentas existentes mantienen el acceso como usuarios normales. En Neon, aplica el cambio usando `DIRECT_URL` y `npm run db:deploy`, o deja que el Build Command de Vercel use el script `vercel-build`: en producción ejecuta `prisma migrate deploy` con `DIRECT_URL` y después el seed idempotente. No ejecutes la misma migración simultáneamente desde varias instancias. Una vez desplegado el esquema y creado el usuario desde la web, promuévelo con el comando anterior y con `DATABASE_URL` configurada para esa misma base de Neon.
+
+4. Deja el Build Command de Vercel en su valor predeterminado para que detecte `vercel-build`. Las previews no escriben en la base de producción. Redeploya la aplicación. Comprueba `https://fish-store-jet.vercel.app/api/products`: debería responder con el catálogo en JSON.
 
 Vercel/Neon no puede crear la base por el mero hecho de conocer la URL de la web; el paso de **Storage** requiere que inicies sesión y autorices la integración en tu cuenta. Si la integración completa ya añadió `DATABASE_URL`, añade manualmente `DIRECT_URL` desde Neon para que las migraciones usen una conexión directa.
 
-Después de añadir o cambiar modelos Prisma, la migración se ejecutará automáticamente en el siguiente despliegue de producción. El seed actualiza el catálogo de demostración de forma idempotente y desactiva los productos de ejemplo anteriores sin borrar productos ni pedidos.
+Después de añadir o cambiar modelos Prisma, crea la migración en desarrollo con `npm run db:migrate -- --name nombre_del_cambio` y aplícala en producción antes de desplegar la nueva versión. El seed actualiza el catálogo de demostración de forma idempotente y desactiva los productos de ejemplo anteriores sin borrar productos ni pedidos.
 
 El formulario crea una sesión de Stripe Checkout; el cliente no envía precios y el total se calcula con datos de la base de datos. Usa las claves `sk_test_...` y `whsec_...` de Stripe; esta demo rechaza claves Stripe live. Para probar el webhook localmente, ejecuta `stripe listen --forward-to localhost:3000/api/webhooks/stripe` y copia el secreto que Stripe CLI imprime a `STRIPE_WEBHOOK_SECRET`. El pedido solo se marca como pagado tras validar el pago completado.
 
 Al cambiar `prisma/schema.prisma`, genera una migración con `npm run db:migrate -- --name nombre_del_cambio`; aplica las migraciones pendientes localmente con `npm run db:deploy`.
 
-Para levantar app y base de datos en contenedores:
+Para levantar app y base de datos en contenedores por primera vez:
 
 ```bash
-docker compose up -d --build
+docker compose up -d db
+docker compose run --rm migrate
+docker compose up -d --build app
 ```
 
-El contenedor aplica las migraciones al iniciar y Compose lo reinicia si se detiene inesperadamente. Sigue su salida con `docker compose logs -f app`. Ejecuta el seed una vez después de que el servicio esté listo con `docker compose exec app npm run db:seed`.
+Compose reinicia la app si se detiene inesperadamente y comprueba su disponibilidad con `/api/health/ready`. Sigue su salida con `docker compose logs -f app`. Ejecuta el seed una vez después de que el servicio esté listo con `docker compose exec app npm run db:seed`.
 
 ## Pruebas y CI
 
@@ -90,7 +116,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Vitest comprueba utilidades de carrito y rutas API. Playwright comprueba la presentación de productos sin recortar, la confirmación de contraseña y las páginas legales. También realiza el checkout real con tarjeta de prueba si `STRIPE_SECRET_KEY` y una base PostgreSQL con migraciones y seed están configurados. Para habilitar ese flujo de pago en GitHub Actions, configura el secreto `STRIPE_TEST_SECRET_KEY`; las demás pruebas de navegador se ejecutan aunque no esté configurado. La CI ejecuta typecheck, tests unitarios, pruebas de navegador y build; al hacer push a `main`, construye y publica la imagen en GitHub Container Registry.
+Vitest comprueba utilidades de carrito y rutas API, incluidas las métricas anónimas con consentimiento. Playwright comprueba la presentación de productos sin recortar, la confirmación de contraseña, las páginas legales y las preferencias de cookies. También realiza el checkout real con tarjeta de prueba si `STRIPE_SECRET_KEY` y una base PostgreSQL con migraciones y seed están configurados. Para habilitar ese flujo de pago en GitHub Actions, configura el secreto `STRIPE_TEST_SECRET_KEY`; las demás pruebas de navegador se ejecutan aunque no esté configurado. La CI ejecuta typecheck, tests unitarios, pruebas de navegador y build; al hacer push a `main`, construye y publica la imagen en GitHub Container Registry.
 
 Tarjeta de prueba Stripe: `4242 4242 4242 4242`, cualquier fecha futura y CVC de tres dígitos.
 

@@ -23,6 +23,28 @@ test("registration requires matching password confirmation", async ({ page }) =>
   await expect(page).toHaveURL(/\/account$/);
 });
 
+test("account settings require an active account session", async ({ page }) => {
+  await page.goto("/account/settings");
+
+  await expect(page).toHaveURL(/\/account$/);
+});
+
+test("administrator panel is not accessible without an administrator session", async ({ page }) => {
+  await page.goto("/admin/accounts");
+
+  await expect(page).toHaveURL(/\/account$/);
+});
+
+test("load balancer health endpoints report process and database status", async ({ request }) => {
+  const live = await request.get("/api/health/live");
+  await expect(live).toBeOK();
+  await expect(live.json()).resolves.toEqual({ status: "ok" });
+
+  const ready = await request.get("/api/health/ready");
+  await expect(ready).toBeOK();
+  await expect(ready.json()).resolves.toEqual({ status: "ready" });
+});
+
 test("legal information pages are available", async ({ page }) => {
   const legalPages = [
     { path: "/privacy", heading: "Política de privacidad" },
@@ -34,4 +56,34 @@ test("legal information pages are available", async ({ page }) => {
     await page.goto(path);
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }
+});
+
+test("optional anonymous metrics require consent and can be disabled later", async ({ page }) => {
+  const metricRequests: string[] = [];
+  await page.route("**/api/metrics", async (route) => {
+    metricRequests.push(route.request().postData() ?? "");
+    await route.fulfill({ status: 204 });
+  });
+
+  await page.goto("/privacy");
+  await expect(page.getByRole("heading", { name: "Cookies con cabeza." })).toBeVisible();
+  expect(metricRequests).toHaveLength(0);
+
+  const consentedMetric = page.waitForRequest("**/api/metrics");
+  await page.getByRole("button", { name: "Aceptar todas" }).click();
+  await consentedMetric;
+  expect(metricRequests).toEqual(['{"path":"/privacy"}']);
+  await expect
+    .poll(() => page.evaluate(() => document.cookie))
+    .toContain("fish-store-cookie-consent=all");
+
+  await page.getByRole("button", { name: "Cookies" }).click();
+  await page.getByRole("checkbox", { name: /Métricas anónimas/ }).uncheck();
+  await page.getByRole("button", { name: "Guardar selección" }).click();
+  await page.goto("/terms");
+
+  expect(metricRequests).toHaveLength(1);
+  await expect
+    .poll(() => page.evaluate(() => document.cookie))
+    .toContain("fish-store-cookie-consent=essential");
 });

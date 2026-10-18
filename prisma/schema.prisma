@@ -14,11 +14,16 @@ model User {
   image         String?
   name          String?
   passwordHash  String?
+  authVersion   Int       @default(0)
+  role          UserRole  @default(USER)
+  isActive      Boolean   @default(true)
   accounts      Account[]
   sessions      Session[]
   orders        Order[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  @@index([role, isActive])
 }
 
 model Account {
@@ -102,8 +107,21 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+model DailyPageMetric {
+  day   DateTime @db.Date
+  path  String
+  views Int      @default(0)
+
+  @@id([day, path])
+}
+
 enum OrderStatus {
   PENDING
   PAID
   CANCELLED
+}
+
+enum UserRole {
+  USER
+  ADMIN
 }

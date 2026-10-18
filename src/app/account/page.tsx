@@ -20,7 +20,16 @@ export default async function AccountPage() {
           </div>
           <AccountForm
             googleEnabled={googleSignInEnabled}
-            user={session?.user ? { name: session.user.name, email: session.user.email } : null}
+            user={
+              session?.user.id
+                ? {
+                    id: session.user.id,
+                    name: session.user.name,
+                    email: session.user.email,
+                    role: session.user.role,
+                  }
+                : null
+            }
           />
         </div>
       </main>

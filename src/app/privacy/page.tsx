@@ -40,6 +40,12 @@ export default function PrivacyPage() {
             Los datos técnicos imprescindibles se utilizan para mantener la
             sesión, proteger el servicio y prevenir usos indebidos.
           </li>
+          <li>
+            Solo si aceptas las métricas opcionales: recuentos diarios agregados
+            por página. No se almacenan direcciones IP, identificadores de
+            visitantes, correos electrónicos ni identificadores de cuenta en
+            esos registros.
+          </li>
         </ul>
       </section>
       <section>

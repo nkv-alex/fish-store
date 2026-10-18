@@ -18,7 +18,7 @@ export function getPrisma(): PrismaClient {
   const hostname = new URL(connectionString).hostname;
   const adapter = hostname.endsWith(".neon.tech")
     ? new PrismaNeon({ connectionString })
-    : new PrismaPg({ connectionString, max: 1 });
+    : new PrismaPg({ connectionString, max: getPoolMax() });
 
   globalForPrisma.prisma = new PrismaClient({
     adapter,
@@ -26,4 +26,12 @@ export function getPrisma(): PrismaClient {
   });
 
   return globalForPrisma.prisma;
+}
+
+function getPoolMax(): number {
+  const poolMax = Number(process.env.DATABASE_POOL_MAX ?? "1");
+  if (!Number.isSafeInteger(poolMax) || poolMax < 1 || poolMax > 100) {
+    throw new Error("DATABASE_POOL_MAX must be an integer between 1 and 100.");
+  }
+  return poolMax;
 }
