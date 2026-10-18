@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions, googleSignInEnabled } from "@/lib/auth";
 import { StoreHeader } from "@/components/store-header";
 import AccountForm from "./account-form";
+import AccountIntro from "./account-intro";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +14,7 @@ export default async function AccountPage() {
       <StoreHeader />
       <main className="account-page">
         <div className="account-layout">
-          <div className="account-intro">
-            <p className="eyebrow">CLIENTELA DE CONFIANZA (MÁS O MENOS)</p>
-            <h1>Tu lado<br />del mostrador.</h1>
-            <p>Entra para seguir tus pedidos y que la próxima vez el pescado sospechoso ya te conozca.</p>
-          </div>
+          <AccountIntro />
           <AccountForm
             googleEnabled={googleSignInEnabled}
             user={

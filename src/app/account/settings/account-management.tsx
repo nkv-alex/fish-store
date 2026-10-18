@@ -3,6 +3,7 @@
 import { signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useLanguage } from "@/components/language-provider";
 
 type AccountManagementProps = {
   name: string;
@@ -15,6 +16,7 @@ export default function AccountManagement({
   email,
   hasPassword,
 }: AccountManagementProps) {
+  const { t } = useLanguage();
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -35,14 +37,14 @@ export default function AccountManagement({
       });
       const result: { error?: string; name?: string } = await response.json();
       if (!response.ok) {
-        throw new Error(result.error ?? "No se pudo actualizar la cuenta.");
+        throw new Error(result.error ?? t("accountUpdateError"));
       }
       return result;
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "No se pudo completar la solicitud.",
+          : t("requestError"),
       );
       return null;
     } finally {
@@ -58,7 +60,7 @@ export default function AccountManagement({
       name: String(form.get("name")),
     });
     if (result) {
-      setSuccess("Tu nombre se ha actualizado.");
+      setSuccess(t("profileUpdated"));
       router.refresh();
     }
   }
@@ -69,7 +71,7 @@ export default function AccountManagement({
     const newPassword = String(form.get("newPassword"));
     const confirmPassword = String(form.get("confirmPassword"));
     if (newPassword !== confirmPassword) {
-      setError("Las contraseñas nuevas no coinciden.");
+      setError(t("passwordNewMismatch"));
       return;
     }
 
@@ -88,7 +90,10 @@ export default function AccountManagement({
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const body: Record<string, string> = {
-      confirmation: String(form.get("confirmation")),
+      confirmation:
+        String(form.get("confirmation")) === t("deleteKeyword")
+          ? "ELIMINAR"
+          : String(form.get("confirmation")),
     };
     if (hasPassword) {
       body.currentPassword = String(form.get("deletePassword"));
@@ -103,12 +108,12 @@ export default function AccountManagement({
   return (
     <div className="account-management">
       <section className="account-management-card">
-        <p className="eyebrow">DATOS PERSONALES</p>
-        <h2>Tu perfil.</h2>
-        <p className="account-management-email">Correo de acceso: {email}</p>
+        <p className="eyebrow">{t("profileData")}</p>
+        <h2>{t("yourProfile")}</h2>
+        <p className="account-management-email">{t("accessEmail")} {email}</p>
         <form className="account-form" onSubmit={updateProfile}>
           <label>
-            Nombre
+            {t("name")}
             <input
               name="name"
               type="text"
@@ -119,23 +124,22 @@ export default function AccountManagement({
               defaultValue={name}
             />
           </label>
-          <button className="account-submit" disabled={pending}>Guardar perfil</button>
+          <button className="account-submit" disabled={pending}>{t("saveProfile")}</button>
         </form>
       </section>
 
       <section className="account-management-card">
-        <p className="eyebrow">ACCESO Y SEGURIDAD</p>
-        <h2>{hasPassword ? "Cambiar contraseña." : "Añadir contraseña."}</h2>
+        <p className="eyebrow">{t("security")}</p>
+        <h2>{hasPassword ? t("changePassword") : t("addPassword")}</h2>
         {!hasPassword && (
           <p className="account-management-email">
-            Tu cuenta se creó con Google. Puedes añadir una contraseña para
-            iniciar sesión también con correo.
+            {t("googleAccount")}
           </p>
         )}
         <form className="account-form" onSubmit={updatePassword}>
           {hasPassword && (
             <label>
-              Contraseña actual
+              {t("currentPassword")}
               <input
                 name="currentPassword"
                 type="password"
@@ -146,7 +150,7 @@ export default function AccountManagement({
             </label>
           )}
           <label>
-            Contraseña nueva
+            {t("newPassword")}
             <input
               name="newPassword"
               type="password"
@@ -157,7 +161,7 @@ export default function AccountManagement({
             />
           </label>
           <label>
-            Confirmar contraseña nueva
+            {t("confirmNewPassword")}
             <input
               name="confirmPassword"
               type="password"
@@ -167,20 +171,17 @@ export default function AccountManagement({
               maxLength={72}
             />
           </label>
-          <p className="account-help">Al cambiarla, se cerrarán las demás sesiones de tu cuenta.</p>
+          <p className="account-help">{t("sessionsRevoked")}</p>
           <button className="account-submit" disabled={pending}>
-            {hasPassword ? "Actualizar contraseña" : "Crear contraseña"}
+            {hasPassword ? t("updatePassword") : t("createPassword")}
           </button>
         </form>
       </section>
 
       <section className="account-management-card account-danger-zone">
-        <p className="eyebrow">ACCIONES IRREVERSIBLES</p>
-        <h2>Eliminar cuenta.</h2>
-        <p>
-          Tu perfil, acceso y datos de cuenta se eliminarán. Los pedidos que
-          deban conservarse se desvincularán y su correo se anonimizará.
-        </p>
+        <p className="eyebrow">{t("irreversible")}</p>
+        <h2>{t("deleteAccount")}</h2>
+        <p>{t("deleteAccountCopy")}</p>
         <form className="account-form" onSubmit={deleteAccount}>
           {hasPassword ? (
             <label>
@@ -195,7 +196,7 @@ export default function AccountManagement({
             </label>
           ) : (
             <label>
-              Escribe tu correo para confirmar
+              {t("enterEmail")}
               <input
                 name="confirmEmail"
                 type="email"
@@ -207,11 +208,11 @@ export default function AccountManagement({
             </label>
           )}
           <label>
-            Escribe ELIMINAR para confirmar
-            <input name="confirmation" type="text" required pattern="ELIMINAR" />
+            {t("typeDelete")}
+            <input name="confirmation" type="text" required />
           </label>
           <button className="account-delete-button" disabled={pending}>
-            Eliminar mi cuenta
+            {t("deleteAccountButton")}
           </button>
         </form>
       </section>

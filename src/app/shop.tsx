@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { StoreHeader } from "@/components/store-header";
+import { useLanguage } from "@/components/language-provider";
+import { localeTags } from "@/lib/i18n";
 import { isValidCart, type CartLine } from "@/lib/cart";
 
 export type ShopProduct = {
@@ -15,8 +17,8 @@ export type ShopProduct = {
   currency: string;
 };
 
-function formatPrice(price: number, currency: string) {
-  return new Intl.NumberFormat("es-ES", {
+function formatPrice(price: number, currency: string, locale: keyof typeof localeTags) {
+  return new Intl.NumberFormat(localeTags[locale], {
     style: "currency",
     currency: currency.toUpperCase(),
   }).format(price / 100);
@@ -29,6 +31,7 @@ export default function Shop({
   products: ShopProduct[];
   isAuthenticated: boolean;
 }) {
+  const { locale, t } = useLanguage();
   const heroRef = useRef<HTMLElement>(null);
   const drumTrackRef = useRef<HTMLDivElement>(null);
   const drumAngleRef = useRef(0);
@@ -59,29 +62,62 @@ export default function Shop({
         if (isValidCart(parsedCart)) {
           setCart(parsedCart);
         } else {
-          setError("No se pudo recuperar el carrito. Vuelve a añadir los productos.");
+          setError(t("cartRestoreError"));
         }
         window.sessionStorage.removeItem("fish-store-cart");
       }
     } catch {
-      setError("No se pudo recuperar el carrito de esta sesión.");
+      setError(t("cartSessionError"));
     }
   }, []);
 
   useEffect(() => {
+    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
     const updateHeroOpacity = () => {
+      if (motionPreference.matches) {
+        heroRef.current?.style.setProperty("--hero-opacity", "1");
+        heroRef.current?.style.setProperty("--hero-offset", "0px");
+        heroRef.current?.style.setProperty("--hero-scale", "1");
+        return;
+      }
       const viewport = window.innerHeight || 1;
-      const progress = Math.min(1, Math.max(0, (window.scrollY / viewport - 0.12) / 0.78));
+      const progress = Math.min(1, Math.max(0, (window.scrollY / viewport - 0.04) / 0.84));
       heroRef.current?.style.setProperty("--hero-opacity", String(1 - progress));
+      heroRef.current?.style.setProperty("--hero-offset", `${progress * 64}px`);
+      heroRef.current?.style.setProperty("--hero-scale", String(1 - progress * 0.035));
     };
 
     updateHeroOpacity();
     window.addEventListener("scroll", updateHeroOpacity, { passive: true });
     window.addEventListener("resize", updateHeroOpacity);
+    motionPreference.addEventListener("change", updateHeroOpacity);
     return () => {
       window.removeEventListener("scroll", updateHeroOpacity);
       window.removeEventListener("resize", updateHeroOpacity);
+      motionPreference.removeEventListener("change", updateHeroOpacity);
     };
+  }, []);
+
+  useEffect(() => {
+    const sections = document.querySelectorAll<HTMLElement>("[data-scroll-reveal]");
+    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (motionPreference.matches || !("IntersectionObserver" in window)) {
+      sections.forEach((section) => section.classList.add("is-visible"));
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          entry.target.classList.add("is-visible");
+          observer.unobserve(entry.target);
+        }
+      },
+      { threshold: 0.12, rootMargin: "0px 0px -40px 0px" },
+    );
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -167,7 +203,7 @@ export default function Shop({
       window.sessionStorage.setItem("fish-store-cart", JSON.stringify(cart));
       return true;
     } catch {
-      setError("No se pudo guardar el carrito. Inténtalo de nuevo antes de continuar.");
+      setError(t("cartSaveError"));
       return false;
     }
   }
@@ -189,14 +225,14 @@ export default function Shop({
         return;
       }
       if (!response.ok || !data.url) {
-        throw new Error(data.error ?? "No se pudo iniciar el pago.");
+        throw new Error(data.error ?? t("checkoutError"));
       }
       window.location.assign(data.url);
     } catch (checkoutError) {
       setError(
         checkoutError instanceof Error
           ? checkoutError.message
-          : "No se pudo iniciar el pago.",
+          : t("checkoutError"),
       );
       setPending(false);
     }
@@ -209,31 +245,29 @@ export default function Shop({
       <section className="intro-scene">
         <section className="hero" ref={heroRef}>
           <div className="hero-content">
-            <p className="eyebrow">PESCADERÍA FINA · PROCEDENCIA CUESTIONABLE</p>
-            <p className="hero-edition">TEMPORADA 2026 <span>—</span> CAPTURA Nº 001</p>
-            <h1>Del mar.<br />Más o menos.</h1>
-            <p className="hero-description">
-              Pescado tan fresco que todavía no sabe que está en internet.
-            </p>
+            <p className="eyebrow">{t("heroEyebrow")}</p>
+            <p className="hero-edition">{t("heroEdition")}</p>
+            <h1>{t("heroTitle")}</h1>
+            <p className="hero-description">{t("heroDescription")}</p>
             <a className="hero-link" href="#productos">
-              Ver la captura <span aria-hidden="true">↓</span>
+              {t("viewCatch")} <span aria-hidden="true">↓</span>
             </a>
           </div>
           <div className="hero-coordinate" aria-hidden="true">37°46&apos; N — 25°40&apos; W</div>
-          <div className="hero-stamp" aria-hidden="true"><span>NO PREGUNTES</span><strong>FRESCO</strong><span>CASI SIEMPRE</span></div>
+          <div className="hero-stamp" aria-hidden="true"><span>{t("stampTop")}</span><strong>{t("stampMiddle")}</strong><span>{t("stampBottom")}</span></div>
         </section>
 
         <section className="drum-section" id="productos" aria-labelledby="drum-title">
           <div className="section-heading drum-heading">
             <div>
-              <p className="eyebrow">PESCADO DEL DÍA · MÁS O MENOS</p>
-              <h2 id="drum-title">La captura.</h2>
+              <p className="eyebrow">{t("catchEyebrow")}</p>
+              <h2 id="drum-title">{t("catchTitle")}</h2>
             </div>
-            <p>Gira lento. Como debe ser el pescado bueno.</p>
+            <p>{t("catchHint")}</p>
           </div>
 
           {featuredProducts.length === 0 ? (
-            <p className="empty-state">Hoy no ha picado nada. Vuelve cuando el mar coopere.</p>
+            <p className="empty-state">{t("emptyCatch")}</p>
           ) : (
             <div
               className="drum-scene"
@@ -254,15 +288,15 @@ export default function Shop({
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={product.imageUrl} alt={product.name} />
                         <span className="catch-number">CAPTURA 0{index + 1}</span>
-                        <span className="catch-status">RECIÉN INVENTADO</span>
+                        <span className="catch-status">{t("justInvented")}</span>
                         <div className="fish-card-info">
                           <h3>{product.name}</h3>
-                          <span className="fish-price">{formatPrice(product.price, product.currency)}</span>
+                          <span className="fish-price">{formatPrice(product.price, product.currency, locale)}</span>
                         </div>
                         <button
                           className="fish-card-add"
                           type="button"
-                          aria-label={`Añadir ${product.name} a la captura`}
+                          aria-label={t("addCatch", { name: product.name })}
                           onClick={() => addToCart(product.id)}
                         >
                           <span aria-hidden="true">+</span>
@@ -274,17 +308,17 @@ export default function Shop({
               </div>
             </div>
           )}
-          <p className="drum-footnote">Rotación lenta para no marear a los peces. Ni a ti.</p>
+          <p className="drum-footnote">{t("drumFootnote")}</p>
         </section>
       </section>
 
-      <section className="collection" aria-labelledby="market-title">
+      <section className="collection" aria-labelledby="market-title" data-scroll-reveal>
         <div className="section-heading">
           <div>
-            <p className="eyebrow">PESCA RESPONSABLEMENTE DUDOSA</p>
-            <h2 id="market-title">La lonja.</h2>
+            <p className="eyebrow">{t("collectionEyebrow")}</p>
+            <h2 id="market-title">{t("collectionTitle")}</h2>
           </div>
-          <p>Precios honestos. El pescado, no prometemos.</p>
+          <p>{t("collectionHint")}</p>
         </div>
         <div className="market-list">
           {products.map((product, index) => (
@@ -294,27 +328,30 @@ export default function Shop({
               <img className="market-thumbnail" src={product.imageUrl} alt="" />
               <span className="market-name">{product.name}</span>
               <span className="market-detail">{product.description}</span>
-              <span className="market-price">{formatPrice(product.price, product.currency)}</span>
-              <button className="market-add" onClick={() => addToCart(product.id)} aria-label={`Añadir ${product.name} al carrito`}>+</button>
+              <span className="market-price">{formatPrice(product.price, product.currency, locale)}</span>
+              <button className="market-add" onClick={() => addToCart(product.id)} aria-label={t("addCart", { name: product.name })}>+</button>
             </article>
           ))}
           {products.length === 0 && (
-            <p className="empty-state">La lonja está vacía. Será cosa de la marea.</p>
+            <p className="empty-state">{t("emptyCollection")}</p>
           )}
         </div>
       </section>
 
-      <section className="checkout-section" id="carrito" aria-labelledby="cart-title">
-        <div>
-          <p className="eyebrow">CONFIAMOS EN TU CRITERIO</p>
-          <h2 id="cart-title">El carrito <span>({count})</span></h2>
-          <p className="checkout-note">Pago seguro con Stripe. La procedencia queda entre nosotros.</p>
-          <Link className="orders-shortcut" href="/orders">Consultar mis pedidos <span aria-hidden="true">↗</span></Link>
-        </div>
-        {cart.length === 0 ? (
-          <p className="empty-cart">Todavía no hay nada en el hielo.</p>
-        ) : (
-          <div className="checkout-form">
+      <section className="cart-section" id="carrito" aria-labelledby="cart-title" data-scroll-reveal>
+        <div className="cart-panel">
+          <div className="cart-panel-heading">
+            <div>
+              <p className="eyebrow">{t("trustTaste")}</p>
+              <h2 id="cart-title">{t("cartTitle")} <span>({count})</span></h2>
+              <p className="checkout-note">{t("securePayment")}</p>
+            </div>
+            <Link className="orders-shortcut" href="/orders">{t("myOrders")} <span aria-hidden="true">↗</span></Link>
+          </div>
+          {cart.length === 0 ? (
+            <p className="empty-cart">{t("emptyCart")}</p>
+          ) : (
+            <div className="checkout-form">
             <ul className="cart-lines">
               {cart.map((line) => {
                 const product = products.find((item) => item.id === line.productId);
@@ -323,24 +360,24 @@ export default function Shop({
                   <li key={line.productId}>
                     <span>
                       {product.name} <span className="quantity">× {line.quantity}</span>
-                      <button type="button" className="remove-item" onClick={() => removeFromCart(line.productId)}>Quitar</button>
+                      <button type="button" className="remove-item" onClick={() => removeFromCart(line.productId)}>{t("remove")}</button>
                     </span>
-                    <span>{formatPrice(product.price * line.quantity, product.currency)}</span>
+                    <span>{formatPrice(product.price * line.quantity, product.currency, locale)}</span>
                   </li>
                 );
               })}
             </ul>
-            <div className="cart-total"><span>Total</span><strong>{formatPrice(total, products.find((product) => product.id === cart[0]?.productId)?.currency ?? "usd")}</strong></div>
+            <div className="cart-total"><span>{t("total")}</span><strong>{formatPrice(total, products.find((product) => product.id === cart[0]?.productId)?.currency ?? "usd", locale)}</strong></div>
             {isAuthenticated ? (
               <form onSubmit={checkout}>
                 {error && <p className="form-error" role="alert">{error}</p>}
                 <button className="checkout-button" disabled={pending}>
-                  {pending ? "Preparando pago…" : "Pagar con Stripe"}
+                  {pending ? t("preparingPayment") : t("payWithStripe")}
                 </button>
               </form>
             ) : (
               <>
-                <p className="checkout-note">Para comprar necesitas una cuenta. Inicia sesión o regístrate y volverás aquí con el carrito.</p>
+                <p className="checkout-note">{t("accountRequired")}</p>
                 {error && <p className="form-error" role="alert">{error}</p>}
                 <Link
                   className="checkout-button account-checkout-link"
@@ -349,21 +386,22 @@ export default function Shop({
                     if (!saveCartForAccount()) event.preventDefault();
                   }}
                 >
-                  Iniciar sesión o crear cuenta
+                  {t("signInOrRegister")}
                 </Link>
               </>
             )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </section>
       <footer>
         <Link className="brand" href="/">pez<span>c</span>ado</Link>
-        <span>Producto fresco. Historia mejorada.</span>
-        <span><Link href="/account">Tu cuenta</Link> · © 2026 Pezcado</span>
-        <nav className="legal-links" aria-label="Información legal">
-          <Link href="/privacy">Privacidad</Link>
-          <Link href="/cookies">Cookies</Link>
-          <Link href="/terms">Términos de servicio</Link>
+        <span>{t("productFresh")}</span>
+        <span><Link href="/account">{t("yourAccount")}</Link> · © 2026 Pezcado</span>
+        <nav className="legal-links" aria-label={t("privacy")}>
+          <Link href="/privacy">{t("privacy")}</Link>
+          <Link href="/cookies">{t("cookies")}</Link>
+          <Link href="/terms">{t("terms")}</Link>
         </nav>
       </footer>
     </main>

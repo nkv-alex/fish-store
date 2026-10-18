@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
+import { isLocale, localeTags, translate } from "@/lib/i18n";
 import { getPrisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe";
 
@@ -34,26 +36,29 @@ export default async function SuccessPage({
     });
   }
 
-  const money = new Intl.NumberFormat("es-ES", {
+  const savedLocale = (await cookies()).get("fish-store-locale")?.value;
+  const locale = isLocale(savedLocale) ? savedLocale : "es";
+  const t = (key: Parameters<typeof translate>[1]) => translate(locale, key);
+  const money = new Intl.NumberFormat(localeTags[locale], {
     style: "currency",
     currency: order.currency.toUpperCase(),
   });
 
   return (
     <main className="confirmation">
-      <a className="brand" href="/">marea<span>.</span></a>
+      <a className="brand" href="/">pez<span>c</span>ado</a>
       <div className="confirmation-mark">✓</div>
-      <p className="eyebrow">PAGO CONFIRMADO</p>
-      <h1>Gracias por elegir<br />un poco de mar.</h1>
-      <p className="confirmation-copy">Enviaremos los detalles de tu pedido a <strong>{order.email}</strong>.</p>
+      <p className="eyebrow">{t("paidEyebrow")}</p>
+      <h1>{t("paidTitle")}</h1>
+      <p className="confirmation-copy">{t("paidCopy")} <strong>{order.email}</strong>.</p>
       <div className="confirmation-order">
-        <p>Pedido <span>#{order.id.slice(-8).toUpperCase()}</span></p>
+        <p>{t("orderNumber").replace("{id}", order.id.slice(-8).toUpperCase())}</p>
         {order.items.map((item) => (
           <p key={item.id}>{item.product.name} × {item.quantity}<span>{money.format((item.unitPrice * item.quantity) / 100)}</span></p>
         ))}
-        <p className="confirmation-total">Total<span>{money.format(order.total / 100)}</span></p>
+        <p className="confirmation-total">{t("total")}<span>{money.format(order.total / 100)}</span></p>
       </div>
-      <Link className="checkout-button back-link" href="/">Volver a la tienda</Link>
+      <Link className="checkout-button back-link" href="/">{t("backToStore")}</Link>
     </main>
   );
 }

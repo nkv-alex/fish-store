@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/components/language-provider";
 
 type Consent = "essential" | "all" | null;
 
@@ -23,6 +24,7 @@ function writeConsent(consent: Exclude<Consent, null>) {
 }
 
 export function CookieConsent() {
+  const { t } = useLanguage();
   const pathname = usePathname();
   const [consent, setConsent] = useState<Consent>(null);
   const [bannerOpen, setBannerOpen] = useState(false);
@@ -69,28 +71,24 @@ export function CookieConsent() {
             setBannerOpen(true);
           }}
         >
-          Cookies
+          {t("cookies")}
         </button>
       )}
       {bannerOpen && (
         <aside
           className="cookie-banner"
-          aria-label="Preferencias de cookies"
+          aria-label={t("cookiePrefs")}
           aria-live="polite"
         >
           <div className="cookie-banner-copy">
-            <p className="cookie-banner-eyebrow">TÚ DECIDES</p>
-            <h2 id="cookie-banner-title">Cookies con cabeza.</h2>
-            <p>
-              Usamos cookies necesarias para la sesión y tu cuenta. Si aceptas,
-              también contaremos visitas de forma anónima para mejorar la tienda.
-              Sin anuncios ni perfiles.
-            </p>
-            <Link href="/cookies">Lee la política de cookies</Link>
+            <p className="cookie-banner-eyebrow">{t("youDecide")}</p>
+            <h2 id="cookie-banner-title">{t("cookieTitle")}</h2>
+            <p>{t("cookieCopy")}</p>
+            <Link href="/cookies">{t("readCookiePolicy")}</Link>
           </div>
           {preferencesOpen && (
             <div className="cookie-preferences">
-              <p><strong>Necesarias</strong> — sesión y seguridad (siempre activas).</p>
+              <p><strong>{t("necessary")}</strong> — {t("necessaryDescription")}</p>
               <label>
                 <input
                   type="checkbox"
@@ -98,9 +96,7 @@ export function CookieConsent() {
                   onChange={(event) => setMetricsEnabled(event.target.checked)}
                 />
                 <span>
-                  <strong>Métricas anónimas</strong> — páginas visitadas, solo como
-                  totales diarios; no guardamos IP, correo ni identificador de
-                  cuenta en estas métricas.
+                  <strong>{t("anonymousMetrics")}</strong> — {t("metricsDescription")}
                 </span>
               </label>
             </div>
@@ -113,14 +109,14 @@ export function CookieConsent() {
                   type="button"
                   onClick={() => saveConsent("essential")}
                 >
-                  Solo necesarias
+                  {t("necessaryOnly")}
                 </button>
                 <button
                   className="cookie-button cookie-button-primary"
                   type="button"
                   onClick={() => saveConsent(metricsEnabled ? "all" : "essential")}
                 >
-                  Guardar selección
+                  {t("saveSelection")}
                 </button>
               </>
             ) : (
@@ -130,7 +126,7 @@ export function CookieConsent() {
                   type="button"
                   onClick={() => saveConsent("essential")}
                 >
-                  Solo necesarias
+                  {t("necessaryOnly")}
                 </button>
                 <button
                   className="cookie-button cookie-button-secondary"
@@ -140,14 +136,14 @@ export function CookieConsent() {
                     setPreferencesOpen(true);
                   }}
                 >
-                  Preferencias
+                  {t("preferences")}
                 </button>
                 <button
                   className="cookie-button cookie-button-primary"
                   type="button"
                   onClick={() => saveConsent("all")}
                 >
-                  Aceptar todas
+                  {t("acceptAll")}
                 </button>
               </>
             )}

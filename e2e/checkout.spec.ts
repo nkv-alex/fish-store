@@ -18,8 +18,8 @@ test("customer pays for an item and sees the confirmed order", async ({ page }) 
 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "La lonja." })).toBeVisible();
-  await page.getByRole("button", { name: /Añadir a la captura/ }).first().click();
-  await expect(page.getByRole("heading", { name: /El carrito \(1\)/ })).toBeVisible();
+  await page.locator(".market-add").first().click();
+  await expect(page.getByRole("heading", { name: /Tu carrito \(1\)/ })).toBeVisible();
   await page.getByRole("button", { name: "Pagar con Stripe" }).click();
   await expect(page).toHaveURL(/checkout\.stripe\.com/);
 

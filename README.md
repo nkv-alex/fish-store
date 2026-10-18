@@ -74,6 +74,40 @@ Todas las instancias deben compartir una única base de datos PostgreSQL y ejecu
 
 Las páginas informativas están disponibles en `/privacy`, `/cookies` y `/terms`. La autenticación utiliza las cookies técnicas de sesión de NextAuth; el panel de consentimiento permite aceptar solo las necesarias o activar las métricas propias. Las métricas opcionales guardan únicamente totales diarios por página, sin IP, identificador de visitante o datos de cuenta. Sus textos legales son un borrador basado en las funciones actuales. Antes de publicar o aceptar ventas, completa y verifica la identidad legal y contacto del titular, los territorios de venta y las condiciones de envío, desistimiento, devoluciones y reembolsos con asesoramiento adecuado.
 
+### Idiomas y asistente de chat
+
+La tienda ofrece español (predeterminado), inglés, francés y alemán. La preferencia se guarda en la cookie `fish-store-locale`. El botón flotante usa el Perplexity Router API mediante el SDK oficial de OpenAI Chat Completions. Configura `PERPLEXITY_API_KEY` y `PERPLEXITY_ROUTER_MODEL` como variables de entorno del servidor (por ejemplo, en `.env` local o en las variables del servicio de producción). La clave nunca debe llevar el prefijo `NEXT_PUBLIC_` ni incluirse en el navegador.
+
+La documentación de Perplexity indica que Router está en *private preview*; si la consulta autenticada del catálogo responde `403`, solicita acceso a `api@perplexity.ai` antes de configurar el modelo.
+
+El modelo debe ser un ID `creator/model-name` obtenido del catálogo de Router consultado con **la misma clave** usada en producción: ese listado depende del tier de uso de la organización y es la allowlist de modelos para esa clave. Para consultar el catálogo sin guardar la respuesta en archivos:
+
+```bash
+test -n "$PERPLEXITY_API_KEY" || { echo "Exporta PERPLEXITY_API_KEY primero"; exit 1; }
+curl --fail-with-body --silent --show-error \
+  https://api.perplexity.ai/router/v1/models \
+  -H "Authorization: Bearer $PERPLEXITY_API_KEY"
+```
+
+Copia un ID devuelto por esa consulta en `PERPLEXITY_ROUTER_MODEL`. No uses un slug de ejemplo ni selecciones un modelo solo porque aparezca en documentación pública: un ID no incluido en el catálogo de tu clave da `400`, y un modelo no habilitado para el tier da `402`. Cambiar de proveedor/modelo consiste en cambiar esa variable, sin cambiar el código. Para habilitar el asistente en una sesión local:
+
+```bash
+export PERPLEXITY_API_KEY="..." # créala en https://console.perplexity.ai y no la compartas
+export PERPLEXITY_ROUTER_MODEL="<id copiado del catálogo autenticado>"
+npm run dev
+```
+
+Con el servidor local en marcha, puedes probar el chat desde tu terminal (la clave sigue solo en el servidor):
+
+```bash
+curl --fail-with-body --silent --show-error \
+  http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"locale":"en","messages":[{"role":"user","content":"Where can I see my orders?"}]}'
+```
+
+El servidor limita el tamaño de la conversación y el tiempo por solicitud. El SDK reintenta errores transitorios respetando `Retry-After`; si el Router sigue sobrecargado, la API de la tienda devuelve `429` y conserva ese encabezado. Las llamadas pueden generar cargos según modelo/tokens: configura límites de gasto en Perplexity. La aplicación no incluye rate limiting compartido entre instancias; para un despliegue público, limita la frecuencia en el proxy/API gateway o añade un limitador distribuido.
+
 ### Conectar Neon con Vercel
 
 1. En Vercel, abre el proyecto y ve a **Storage** → **Create Database** → **Neon Postgres**. Crea la base y conéctala a `fish-store` al menos para **Production** (y Preview si vas a usar esas vistas previas).
@@ -116,7 +150,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Vitest comprueba utilidades de carrito y rutas API, incluidas las métricas anónimas con consentimiento. Playwright comprueba la presentación de productos sin recortar, la confirmación de contraseña, las páginas legales y las preferencias de cookies. También realiza el checkout real con tarjeta de prueba si `STRIPE_SECRET_KEY` y una base PostgreSQL con migraciones y seed están configurados. Para habilitar ese flujo de pago en GitHub Actions, configura el secreto `STRIPE_TEST_SECRET_KEY`; las demás pruebas de navegador se ejecutan aunque no esté configurado. La CI ejecuta typecheck, tests unitarios, pruebas de navegador y build; al hacer push a `main`, construye y publica la imagen en GitHub Container Registry.
+Vitest comprueba utilidades de carrito y rutas API, incluidas las métricas anónimas con consentimiento y la validación de la API de chat sin llamadas reales a Perplexity. Playwright comprueba la presentación de productos sin recortar, la confirmación de contraseña, las páginas legales y las preferencias de cookies. También realiza el checkout real con tarjeta de prueba si `STRIPE_SECRET_KEY` y una base PostgreSQL con migraciones y seed están configurados. Para habilitar ese flujo de pago en GitHub Actions, configura el secreto `STRIPE_TEST_SECRET_KEY`; las demás pruebas de navegador se ejecutan aunque no esté configurado. La CI ejecuta typecheck, tests unitarios, pruebas de navegador, build, `npm audit` (bloquea vulnerabilidades altas o críticas), análisis CodeQL con consultas ampliadas y revisión de nuevas dependencias en PR. Al hacer push a `main`, construye y publica la imagen en GitHub Container Registry si pasan los jobs requeridos.
 
 Tarjeta de prueba Stripe: `4242 4242 4242 4242`, cualquier fecha futura y CVC de tres dígitos.
 
