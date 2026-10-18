@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { StoreHeader } from "@/components/store-header";
-import type { CartLine } from "@/lib/cart";
+import { isValidCart, type CartLine } from "@/lib/cart";
 
 export type ShopProduct = {
   id: string;
@@ -24,14 +24,17 @@ function formatPrice(price: number, currency: string) {
 
 export default function Shop({
   products,
-  initialEmail,
+  isAuthenticated,
 }: {
   products: ShopProduct[];
-  initialEmail: string;
+  isAuthenticated: boolean;
 }) {
   const heroRef = useRef<HTMLElement>(null);
+  const drumTrackRef = useRef<HTMLDivElement>(null);
+  const drumAngleRef = useRef(0);
+  const drumVelocityRef = useRef(-360 / 58);
+  const drumDirectionRef = useRef(-1);
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [email, setEmail] = useState(initialEmail);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const count = useMemo(
@@ -49,6 +52,23 @@ export default function Shop({
   const featuredProducts = products.slice(0, 5);
 
   useEffect(() => {
+    try {
+      const savedCart = window.sessionStorage.getItem("fish-store-cart");
+      if (savedCart) {
+        const parsedCart: unknown = JSON.parse(savedCart);
+        if (isValidCart(parsedCart)) {
+          setCart(parsedCart);
+        } else {
+          setError("No se pudo recuperar el carrito. Vuelve a añadir los productos.");
+        }
+        window.sessionStorage.removeItem("fish-store-cart");
+      }
+    } catch {
+      setError("No se pudo recuperar el carrito de esta sesión.");
+    }
+  }, []);
+
+  useEffect(() => {
     const updateHeroOpacity = () => {
       const viewport = window.innerHeight || 1;
       const progress = Math.min(1, Math.max(0, (window.scrollY / viewport - 0.12) / 0.78));
@@ -63,6 +83,65 @@ export default function Shop({
       window.removeEventListener("resize", updateHeroOpacity);
     };
   }, []);
+
+  useEffect(() => {
+    const track = drumTrackRef.current;
+    if (!track) return;
+
+    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let frameId = 0;
+    let previousTime: number | undefined;
+
+    function animate(time: number) {
+      if (previousTime !== undefined) {
+        const elapsed = Math.min((time - previousTime) / 1000, 0.05);
+        const targetVelocity = drumDirectionRef.current * (360 / 58);
+        const easing = 1 - Math.exp(-elapsed / 0.7);
+        drumVelocityRef.current +=
+          (targetVelocity - drumVelocityRef.current) * easing;
+        drumAngleRef.current =
+          (drumAngleRef.current + drumVelocityRef.current * elapsed) % 360;
+        track?.style.setProperty(
+          "--drum-angle",
+          `${drumAngleRef.current}deg`,
+        );
+      }
+      previousTime = time;
+      if (!motionPreference.matches) {
+        frameId = window.requestAnimationFrame(animate);
+      }
+    }
+
+    function updateMotionPreference() {
+      window.cancelAnimationFrame(frameId);
+      previousTime = undefined;
+      if (motionPreference.matches) {
+        track?.style.removeProperty("--drum-angle");
+        return;
+      }
+      frameId = window.requestAnimationFrame(animate);
+    }
+
+    updateMotionPreference();
+    motionPreference.addEventListener("change", updateMotionPreference);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      motionPreference.removeEventListener("change", updateMotionPreference);
+    };
+  }, []);
+
+  function updateDrumRotation(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== "mouse" || !drumTrackRef.current) return;
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (bounds.width === 0) return;
+    drumDirectionRef.current =
+      event.clientX < bounds.left + bounds.width / 2 ? -1 : 1;
+  }
+
+  function resetDrumRotation() {
+    drumDirectionRef.current = -1;
+  }
 
   function addToCart(productId: string) {
     setError("");
@@ -83,6 +162,16 @@ export default function Shop({
     setCart((current) => current.filter((line) => line.productId !== productId));
   }
 
+  function saveCartForAccount() {
+    try {
+      window.sessionStorage.setItem("fish-store-cart", JSON.stringify(cart));
+      return true;
+    } catch {
+      setError("No se pudo guardar el carrito. Inténtalo de nuevo antes de continuar.");
+      return false;
+    }
+  }
+
   async function checkout(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
@@ -92,9 +181,13 @@ export default function Shop({
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, items: cart }),
+        body: JSON.stringify({ items: cart }),
       });
       const data: { url?: string; error?: string } = await response.json();
+      if (response.status === 401 && saveCartForAccount()) {
+        window.location.assign("/account?callbackUrl=%2F%23carrito");
+        return;
+      }
       if (!response.ok || !data.url) {
         throw new Error(data.error ?? "No se pudo iniciar el pago.");
       }
@@ -142,8 +235,12 @@ export default function Shop({
           {featuredProducts.length === 0 ? (
             <p className="empty-state">Hoy no ha picado nada. Vuelve cuando el mar coopere.</p>
           ) : (
-            <div className="drum-scene">
-              <div className="drum-track">
+            <div
+              className="drum-scene"
+              onPointerMove={updateDrumRotation}
+              onPointerLeave={resetDrumRotation}
+            >
+              <div className="drum-track" ref={drumTrackRef}>
                 {featuredProducts.map((product, index) => {
                   const angle = (360 * index) / featuredProducts.length;
                   return (
@@ -158,18 +255,17 @@ export default function Shop({
                         <img src={product.imageUrl} alt={product.name} />
                         <span className="catch-number">CAPTURA 0{index + 1}</span>
                         <span className="catch-status">RECIÉN INVENTADO</span>
-                      </div>
-                      <div className="fish-card-body">
-                        <div className="fish-card-title">
-                          <div>
-                            <p className="fish-origin">ATLÁNTICO · ESO DICE LA ETIQUETA</p>
-                            <h3>{product.name}</h3>
-                          </div>
+                        <div className="fish-card-info">
+                          <h3>{product.name}</h3>
                           <span className="fish-price">{formatPrice(product.price, product.currency)}</span>
                         </div>
-                        <p className="fish-description">{product.description}</p>
-                        <button className="add-button" onClick={() => addToCart(product.id)}>
-                          Añadir a la captura <span aria-hidden="true">+</span>
+                        <button
+                          className="fish-card-add"
+                          type="button"
+                          aria-label={`Añadir ${product.name} a la captura`}
+                          onClick={() => addToCart(product.id)}
+                        >
+                          <span aria-hidden="true">+</span>
                         </button>
                       </div>
                     </article>
@@ -218,7 +314,7 @@ export default function Shop({
         {cart.length === 0 ? (
           <p className="empty-cart">Todavía no hay nada en el hielo.</p>
         ) : (
-          <form className="checkout-form" onSubmit={checkout}>
+          <div className="checkout-form">
             <ul className="cart-lines">
               {cart.map((line) => {
                 const product = products.find((item) => item.id === line.productId);
@@ -234,33 +330,41 @@ export default function Shop({
                 );
               })}
             </ul>
-            {!initialEmail && (
+            <div className="cart-total"><span>Total</span><strong>{formatPrice(total, products.find((product) => product.id === cart[0]?.productId)?.currency ?? "usd")}</strong></div>
+            {isAuthenticated ? (
+              <form onSubmit={checkout}>
+                {error && <p className="form-error" role="alert">{error}</p>}
+                <button className="checkout-button" disabled={pending}>
+                  {pending ? "Preparando pago…" : "Pagar con Stripe"}
+                </button>
+              </form>
+            ) : (
               <>
-                <label htmlFor="email">Correo para el recibo (si lo necesitas)</label>
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="tu@correo.com"
-                />
-                <p className="guest-note">¿Quieres ver el pedido después? <Link href="/account">Crea una cuenta</Link>.</p>
+                <p className="checkout-note">Para comprar necesitas una cuenta. Inicia sesión o regístrate y volverás aquí con el carrito.</p>
+                {error && <p className="form-error" role="alert">{error}</p>}
+                <Link
+                  className="checkout-button account-checkout-link"
+                  href="/account?callbackUrl=%2F%23carrito"
+                  onClick={(event) => {
+                    if (!saveCartForAccount()) event.preventDefault();
+                  }}
+                >
+                  Iniciar sesión o crear cuenta
+                </Link>
               </>
             )}
-            <div className="cart-total"><span>Total</span><strong>{formatPrice(total, products.find((product) => product.id === cart[0]?.productId)?.currency ?? "usd")}</strong></div>
-            {error && <p className="form-error" role="alert">{error}</p>}
-            <button className="checkout-button" disabled={pending}>
-              {pending ? "Preparando pago…" : "Pagar con Stripe"}
-            </button>
-          </form>
+          </div>
         )}
       </section>
       <footer>
         <Link className="brand" href="/">pez<span>c</span>ado</Link>
         <span>Producto fresco. Historia mejorada.</span>
         <span><Link href="/account">Tu cuenta</Link> · © 2026 Pezcado</span>
+        <nav className="legal-links" aria-label="Información legal">
+          <Link href="/privacy">Privacidad</Link>
+          <Link href="/cookies">Cookies</Link>
+          <Link href="/terms">Términos de servicio</Link>
+        </nav>
       </footer>
     </main>
   );

@@ -48,7 +48,9 @@ Para detenerla explícitamente, usa `docker compose down`. Para desarrollo local
 
 ### Autenticación
 
-La ruta `/account` permite registrarse e iniciar sesión con correo y contraseña o con Google OAuth. Las contraseñas se guardan como hashes bcrypt (nunca reversiblemente cifradas ni en texto plano). Para Google, crea un OAuth client de tipo Web y configura `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_SECRET` y `NEXTAUTH_URL=https://fish-store-jet.vercel.app` como variables en Vercel. Añade a los URI de redirección autorizados `https://fish-store-jet.vercel.app/api/auth/callback/google` y, para desarrollo, `http://localhost:3000/api/auth/callback/google`. Genera el secreto con `openssl rand -base64 32`. El login por contraseña funciona aunque Google no esté configurado. Los pedidos hechos con una sesión iniciada quedan asociados a la cuenta y aparecen en `/orders`.
+La ruta `/account` permite registrarse e iniciar sesión con correo y contraseña o con Google OAuth. Las contraseñas se guardan como hashes bcrypt (nunca reversiblemente cifradas ni en texto plano), y el formulario de registro pide confirmar la contraseña. Para Google, crea un OAuth client de tipo Web y configura `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_SECRET` y `NEXTAUTH_URL=https://fish-store-jet.vercel.app` como variables en Vercel. En Google Cloud Console → **APIs & Services** → **Credentials** → tu OAuth client → **Authorized redirect URIs**, añade `https://fish-store-jet.vercel.app/api/auth/callback/google`; para desarrollo local añade `http://localhost:3000/api/auth/callback/google`. La URI debe usar el mismo dominio que `NEXTAUTH_URL` y no lleva barra final. Genera el secreto con `openssl rand -base64 32`. El login por contraseña funciona aunque Google no esté configurado. Es necesario iniciar sesión o crear una cuenta para comprar; los pedidos quedan asociados a la cuenta y aparecen en `/orders`.
+
+Las páginas informativas están disponibles en `/privacy`, `/cookies` y `/terms`. Sus textos son un borrador basado en las funciones actuales de la aplicación. Antes de publicar o aceptar ventas, completa y verifica la identidad legal y contacto del titular, los territorios de venta y las condiciones de envío, desistimiento, devoluciones y reembolsos con asesoramiento adecuado.
 
 ### Conectar Neon con Vercel
 
@@ -88,7 +90,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Vitest comprueba utilidades de carrito y rutas API. Playwright realiza el checkout real con tarjeta de prueba si `STRIPE_SECRET_KEY` y una base PostgreSQL con migraciones y seed están configurados. Para habilitar ese E2E en GitHub Actions, configura el secreto `STRIPE_TEST_SECRET_KEY`. La CI ejecuta typecheck, tests y build; al hacer push a `main`, construye y publica la imagen en GitHub Container Registry.
+Vitest comprueba utilidades de carrito y rutas API. Playwright comprueba la presentación de productos sin recortar, la confirmación de contraseña y las páginas legales. También realiza el checkout real con tarjeta de prueba si `STRIPE_SECRET_KEY` y una base PostgreSQL con migraciones y seed están configurados. Para habilitar ese flujo de pago en GitHub Actions, configura el secreto `STRIPE_TEST_SECRET_KEY`; las demás pruebas de navegador se ejecutan aunque no esté configurado. La CI ejecuta typecheck, tests unitarios, pruebas de navegador y build; al hacer push a `main`, construye y publica la imagen en GitHub Container Registry.
 
 Tarjeta de prueba Stripe: `4242 4242 4242 4242`, cualquier fecha futura y CVC de tres dígitos.
 

@@ -55,16 +55,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx prisma generate
-      - name: Run Stripe checkout E2E
+      - name: Prepare database for browser tests
         run: |
-          if [ -z "$STRIPE_SECRET_KEY" ]; then
-            echo "::notice::Set STRIPE_TEST_SECRET_KEY to enable the Stripe E2E test."
-            exit 0
-          fi
           npm run db:deploy
           npm run db:seed
-          npx playwright install --with-deps chromium
-          npm run test:e2e
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run browser tests
+        run: npm run test:e2e
 
   publish:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

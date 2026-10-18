@@ -6,7 +6,6 @@ import { getStripe } from "@/lib/stripe";
 import { authOptions } from "@/lib/auth";
 
 const checkoutSchema = z.object({
-  email: z.email(),
   items: z
     .array(
       z.object({
@@ -43,9 +42,15 @@ export async function POST(request: Request) {
   }
 
   try {
-    const prisma = getPrisma();
     const userSession = await getServerSession(authOptions);
-    const email = userSession?.user.email ?? parsed.data.email;
+    if (!userSession?.user.id || !userSession.user.email) {
+      return NextResponse.json(
+        { error: "Inicia sesión o crea una cuenta para comprar." },
+        { status: 401 },
+      );
+    }
+    const prisma = getPrisma();
+    const email = userSession.user.email;
     const products = await prisma.product.findMany({
       where: { id: { in: [...quantities.keys()] }, isActive: true },
     });
@@ -63,7 +68,7 @@ export async function POST(request: Request) {
     const order = await prisma.order.create({
       data: {
         email,
-        userId: userSession?.user.id,
+        userId: userSession.user.id,
         total,
         currency: products[0].currency,
         items: {

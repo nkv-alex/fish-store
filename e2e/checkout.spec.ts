@@ -6,12 +6,21 @@ test.skip(
 );
 
 test("customer pays for an item and sees the confirmed order", async ({ page }) => {
+  const email = `buyer-${Date.now()}@example.com`;
+  await page.goto("/account");
+  await page.getByRole("tab", { name: "Crear cuenta" }).click();
+  await page.getByLabel("Nombre").fill("Fish Buyer");
+  await page.getByLabel("Correo electrónico").fill(email);
+  await page.getByLabel("Contraseña", { exact: true }).fill("a-long-test-password");
+  await page.getByLabel("Confirmar contraseña").fill("a-long-test-password");
+  await page.getByRole("button", { name: "Crear mi cuenta" }).click();
+  await expect(page).toHaveURL(/\/orders$/);
+
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "La colección" })).toBeVisible();
-  await page.getByRole("button", { name: /Añadir a la bolsa/ }).first().click();
-  await expect(page.getByRole("heading", { name: /Tu bolsa \(1\)/ })).toBeVisible();
-  await page.getByLabel("Correo para la confirmación").fill("buyer@example.com");
-  await page.getByRole("button", { name: "Continuar al pago" }).click();
+  await expect(page.getByRole("heading", { name: "La lonja." })).toBeVisible();
+  await page.getByRole("button", { name: /Añadir a la captura/ }).first().click();
+  await expect(page.getByRole("heading", { name: /El carrito \(1\)/ })).toBeVisible();
+  await page.getByRole("button", { name: "Pagar con Stripe" }).click();
   await expect(page).toHaveURL(/checkout\.stripe\.com/);
 
   await page.getByLabel(/email/i).fill("buyer@example.com");

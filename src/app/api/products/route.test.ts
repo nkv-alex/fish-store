@@ -51,14 +51,13 @@ describe("product and checkout API routes", () => {
     });
   });
 
-  it("rejects invalid checkout input before contacting services", async () => {
+  it("rejects checkout without a valid cart before contacting services", async () => {
     const response = await POST(
       new Request("http://localhost/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: "not-an-email",
-          items: [{ productId: "product-1", quantity: 1 }],
+          items: [],
         }),
       }),
     );
@@ -68,6 +67,25 @@ describe("product and checkout API routes", () => {
       error: "Revisa el correo y los productos.",
     });
     expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects checkout for guests", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [{ productId: "product-1", quantity: 1 }],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Inicia sesión o crea una cuenta para comprar.",
+    });
+    expect(findMany).not.toHaveBeenCalled();
+    expect(createOrder).not.toHaveBeenCalled();
   });
 
   it("returns to the home page when Stripe checkout is cancelled", async () => {
@@ -95,7 +113,6 @@ describe("product and checkout API routes", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: "buyer@example.com",
           items: [{ productId: "product-1", quantity: 1 }],
         }),
       }),

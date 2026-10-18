@@ -26,7 +26,7 @@ export default async function Home() {
   return (
     <Shop
       products={products}
-      initialEmail={session?.user?.email ?? ""}
+      isAuthenticated={Boolean(session?.user?.id)}
     />
   );
 }

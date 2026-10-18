@@ -18,6 +18,19 @@ export default function AccountForm({ googleEnabled, user }: AccountFormProps) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  function getCallbackUrl() {
+    const callbackUrl = new URLSearchParams(window.location.search).get("callbackUrl");
+    if (!callbackUrl) return "/orders";
+
+    try {
+      const destination = new URL(callbackUrl, window.location.origin);
+      if (destination.origin !== window.location.origin) return "/orders";
+      return `${destination.pathname}${destination.search}${destination.hash}`;
+    } catch {
+      return "/orders";
+    }
+  }
+
   async function authenticate(email: string, password: string) {
     const result = await signIn("credentials", {
       email,
@@ -28,7 +41,7 @@ export default function AccountForm({ googleEnabled, user }: AccountFormProps) {
       throw new Error("No se pudo iniciar sesión. Revisa tu correo y contraseña.");
     }
     await update();
-    router.replace("/orders");
+    router.replace(getCallbackUrl());
     router.refresh();
   }
 
@@ -41,6 +54,11 @@ export default function AccountForm({ googleEnabled, user }: AccountFormProps) {
     const form = new FormData(event.currentTarget);
     const email = String(form.get("email"));
     const password = String(form.get("password"));
+    if (mode === "register" && password !== String(form.get("confirmPassword"))) {
+      setError("Las contraseñas no coinciden.");
+      setPending(false);
+      return;
+    }
 
     try {
       if (mode === "register") {
@@ -73,7 +91,7 @@ export default function AccountForm({ googleEnabled, user }: AccountFormProps) {
     setPending(true);
     setError("");
     try {
-      await signIn("google", { callbackUrl: "/orders" });
+      await signIn("google", { callbackUrl: getCallbackUrl() });
     } catch {
       setError("No se pudo iniciar sesión con Google.");
       setPending(false);
@@ -142,6 +160,19 @@ export default function AccountForm({ googleEnabled, user }: AccountFormProps) {
           />
         </label>
         {mode === "register" && (
+          <label>
+            Confirmar contraseña
+            <input
+              name="confirmPassword"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={12}
+              maxLength={72}
+            />
+          </label>
+        )}
+        {mode === "register" && (
           <p className="account-help">Usa al menos 12 caracteres. Guardamos un hash seguro, nunca tu contraseña legible.</p>
         )}
         {error && <p className="account-error" role="alert">{error}</p>}
@@ -163,7 +194,7 @@ export default function AccountForm({ googleEnabled, user }: AccountFormProps) {
         </button>
       ) : (
         <p className="account-help">
-          Google estará disponible cuando se configuren GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en Vercel.
+          Google estará disponible cuando se configuren GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en Vercel. URI de redirección: https://fish-store-jet.vercel.app/api/auth/callback/google
         </p>
       )}
       <p className="account-help">Al continuar, aceptas que guardemos tu cuenta y el historial de pedidos en la base de datos.</p>
