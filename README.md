@@ -43,6 +43,7 @@ La tienda estará en [http://localhost:3000](http://localhost:3000). `npm run de
 ```bash
 openssl rand -base64 32
 # Guarda el resultado como AUTH_SECRET en .env antes de iniciar Compose.
+# En desarrollo, configura NEXT_PUBLIC_APP_URL y NEXTAUTH_URL como http://localhost:3000.
 docker compose up -d db
 docker compose run --rm migrate
 docker compose up -d --build app nginx
@@ -50,7 +51,7 @@ docker compose ps
 docker compose logs -f app
 ```
 
-Nginx se ejecuta en su propio contenedor y reenvía las solicitudes a Next.js; la tienda sigue disponible en [http://localhost:3000](http://localhost:3000). El puerto de la app no se publica directamente en el host. Para detener los servicios, usa `docker compose down`. Para desarrollo local, `DATABASE_URL` y `DIRECT_URL` apuntan al PostgreSQL de Docker. En Neon, la app usa `DATABASE_URL` (conexión pooled) y Prisma CLI usa `DIRECT_URL` (conexión directa para migraciones); la selección del adaptador es automática por hostname.
+Nginx se ejecuta en su propio contenedor y reenvía las solicitudes a Next.js; la tienda sigue disponible en [http://localhost:3000](http://localhost:3000). El puerto de la app no se publica directamente en el host. Compose requiere `NEXT_PUBLIC_APP_URL`: en producción debe ser la URL pública completa, por ejemplo `https://tienda.example.com`, y `NEXTAUTH_URL` debe apuntar al mismo dominio. Stripe utiliza esa URL pública para volver a `/order/success` después del pago y a la tienda si se cancela; no configures `localhost` en producción. Para detener los servicios, usa `docker compose down`. Para desarrollo local, `DATABASE_URL` y `DIRECT_URL` apuntan al PostgreSQL de Docker. En Neon, la app usa `DATABASE_URL` (conexión pooled) y Prisma CLI usa `DIRECT_URL` (conexión directa para migraciones); la selección del adaptador es automática por hostname.
 
 ### Autenticación
 

@@ -220,7 +220,12 @@ export default function Shop({
         </section>
       </section>
 
-      <section className="collection" aria-labelledby="market-title" data-scroll-reveal>
+      <section
+        className="collection"
+        id="lonja"
+        aria-labelledby="market-title"
+        data-scroll-reveal
+      >
         <div className="section-heading">
           <div>
             <p className="eyebrow">{t("collectionEyebrow")}</p>
@@ -230,14 +235,31 @@ export default function Shop({
         </div>
         <div className="market-list">
           {products.map((product, index) => (
-            <article className="market-row" key={product.id}>
-              <span className="market-index">{String(index + 1).padStart(2, "0")}</span>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img className="market-thumbnail" src={product.imageUrl} alt="" />
-              <span className="market-name">{product.name}</span>
-              <span className="market-detail">{product.description}</span>
-              <span className="market-price">{formatPrice(product.price, product.currency, locale)}</span>
-              <button className="market-add" onClick={() => addToCart(product.id)} aria-label={t("addCart", { name: product.name })}>+</button>
+            <article className="market-card" key={product.id}>
+              <div className="market-card-image">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={product.imageUrl} alt={product.name} />
+                <span className="market-index">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <button
+                  className="market-add"
+                  type="button"
+                  onClick={() => addToCart(product.id)}
+                  aria-label={t("addCart", { name: product.name })}
+                >
+                  <span aria-hidden="true">+</span>
+                </button>
+              </div>
+              <div className="market-card-info">
+                <div className="market-card-title">
+                  <h3>{product.name}</h3>
+                  <span className="market-price">
+                    {formatPrice(product.price, product.currency, locale)}
+                  </span>
+                </div>
+                <p className="market-detail">{product.description}</p>
+              </div>
             </article>
           ))}
           {products.length === 0 && (

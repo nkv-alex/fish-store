@@ -166,15 +166,22 @@ main > section, .legal-content section { animation: surface-enter .65s cubic-bez
 
 .collection { padding: 108px 12% 120px; background: #111515; }
 .collection .section-heading { margin-bottom: 36px; }
-.market-list { border-top: 1px solid var(--line); }
-.market-row { min-height: 79px; display: grid; grid-template-columns: 44px 56px 1fr minmax(140px, .8fr) 90px 36px; align-items: center; gap: 16px; border-bottom: 1px solid var(--line); }
-.market-index { color: var(--sea); font-size: 8px; }
-.market-thumbnail { width: 52px; height: 52px; object-fit: contain; filter: saturate(.7) brightness(.82); }
-.market-name { font: 500 21px "Playfair Display", serif; }
-.market-detail { color: #818987; font-size: 7px; letter-spacing: .3px; }
-.market-price { text-align: right; color: #d7d8cf; font-size: 10px; }
-.market-add { width: 32px; height: 32px; border: 1px solid var(--line); background: transparent; color: var(--sea); font-size: 18px; cursor: pointer; transition: background .2s, color .2s, border-color .2s, transform .2s cubic-bezier(.2,.7,.2,1); }
-.market-add:hover, .market-add:focus-visible { transform: scale(1.16); border-color: var(--sea); background: var(--sea); color: var(--paper); }
+.market-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+.market-card { min-width: 0; overflow: hidden; border: 1px solid #ffffff20; background: linear-gradient(150deg, #1c2321, #131817); box-shadow: 0 16px 38px #0003; transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease; }
+.market-card:hover { transform: translateY(-4px); border-color: #b9cb8566; box-shadow: 0 22px 45px #0005; }
+.market-card-image { position: relative; height: clamp(210px, 24vw, 300px); overflow: hidden; background: radial-gradient(ellipse at 50% 65%, #39443a, #151a19 72%); }
+.market-card-image::after { position: absolute; inset: 45% 0 0; background: linear-gradient(transparent, #101514cc); content: ""; pointer-events: none; }
+.market-card-image img { width: 100%; height: 100%; display: block; object-fit: contain; padding: 12px; filter: saturate(.88) contrast(1.08); transition: transform .45s cubic-bezier(.2,.7,.2,1); }
+.market-card:hover .market-card-image img { transform: scale(1.06); }
+.market-index { position: absolute; z-index: 1; top: 14px; left: 15px; display: grid; min-width: 34px; height: 30px; place-items: center; border: 1px solid #ffffff58; background: #1015149c; color: #e1e7d4; font: 9px "DM Mono", monospace; }
+.market-card-info { padding: 17px 18px 19px; }
+.market-card-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.market-card-title h3 { min-width: 0; margin: 0; font: 500 clamp(18px, 1.8vw, 23px)/1.2 "Playfair Display", serif; }
+.market-price { flex: 0 0 auto; color: #d7d8cf; font: 11px "DM Mono", monospace; white-space: nowrap; }
+.market-detail { min-height: 34px; margin: 9px 0 0; color: #929a94; font-size: 10px; line-height: 1.65; }
+.market-add { position: absolute; z-index: 2; right: 14px; bottom: 14px; width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid #d4dfa9a6; border-radius: 50%; background: #101514d9; color: var(--sea); cursor: pointer; transition: background .2s, color .2s, border-color .2s, transform .2s cubic-bezier(.2,.7,.2,1); }
+.market-add span { font-size: 24px; font-weight: 300; line-height: 1; }
+.market-add:hover, .market-add:focus-visible { transform: scale(1.1); border-color: var(--sea); background: var(--sea); color: var(--paper); }
 .cart-promo { display: grid; justify-items: center; gap: 14px; padding: 58px 24px; background: radial-gradient(ellipse at 50% 0, #26372e 0%, #171d1c 60%, #121616 100%); text-align: center; }
 .cart-promo .eyebrow { margin: 0; }
 .cart-promo h2 { margin: 0; font: 500 34px "Playfair Display", serif; }
@@ -458,11 +465,14 @@ footer > span a:hover { color: var(--sea); }
   .drum-footnote { right: 6%; bottom: 18px; max-width: 200px; font-size: 6px; text-align: right; }
   .collection { padding: 75px 7% 85px; }
   .collection .section-heading > p { display: none; }
-  .market-row { grid-template-columns: 26px 42px 1fr 60px 32px; gap: 9px; padding: 11px 0; }
-  .market-thumbnail { width: 40px; height: 40px; }
-  .market-name { font-size: 17px; }
-  .market-detail { display: none; }
-  .market-price { font-size: 8px; }
+  .market-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .market-card-image { height: clamp(165px, 36vw, 230px); }
+  .market-card-info { padding: 14px; }
+  .market-card-title { align-items: start; flex-direction: column; gap: 6px; }
+  .market-card-title h3 { font-size: 19px; }
+  .market-detail { min-height: 0; font-size: 9px; }
+  .market-price { font-size: 10px; }
+  .market-add { right: 10px; bottom: 10px; width: 38px; height: 38px; }
   .cart-page { padding: 48px 6% 75px; }
   .cart-page-heading { align-items: start; flex-direction: column; }
   .cart-layout { grid-template-columns: 1fr; }
@@ -510,4 +520,11 @@ footer > span a:hover { color: var(--sea); }
   .hero-link span { animation: none; }
   .scroll-reveal:not(.is-visible) { opacity: 1; transform: none; }
   .chat-panel { animation: none; }
+}
+
+@media (max-width: 480px) {
+  .market-list { grid-template-columns: 1fr; gap: 18px; }
+  .market-card-image { height: 260px; }
+  .market-card-info { padding: 17px 18px 19px; }
+  .market-card-title { align-items: baseline; flex-direction: row; }
 }

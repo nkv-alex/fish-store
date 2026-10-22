@@ -135,4 +135,116 @@ describe("product and checkout API routes", () => {
       }),
     );
   });
+
+  it("uses the public auth URL instead of a localhost app URL for Stripe redirects", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://localhost:3000");
+    vi.stubEnv("NEXTAUTH_URL", "https://fish-store-jet.vercel.app");
+    getSession.mockResolvedValue({
+      user: { id: "user-1", email: "account@example.com" },
+    });
+    findMany.mockResolvedValue([
+      {
+        id: "product-1",
+        name: "Salmón de autor",
+        description: "Captura de prueba",
+        price: 3200,
+        currency: "usd",
+      },
+    ]);
+    createOrder.mockResolvedValue({ id: "order-1" });
+    createStripeSession.mockResolvedValue({
+      id: "cs_test_1",
+      url: "https://checkout.stripe.com/session",
+    });
+
+    const response = await POST(
+      new Request("https://fish-store-jet.vercel.app/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [{ productId: "product-1", quantity: 1 }],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(createStripeSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cancel_url: "https://fish-store-jet.vercel.app/",
+        success_url:
+          "https://fish-store-jet.vercel.app/order/success?session_id={CHECKOUT_SESSION_ID}",
+      }),
+    );
+  });
+
+  it("uses the Vercel deployment URL when the configured URLs are localhost", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://localhost:3000");
+    vi.stubEnv("NEXTAUTH_URL", "http://localhost:3000");
+    vi.stubEnv("VERCEL_URL", "fish-store-jet.vercel.app");
+    getSession.mockResolvedValue({
+      user: { id: "user-1", email: "account@example.com" },
+    });
+    findMany.mockResolvedValue([
+      {
+        id: "product-1",
+        name: "Salmón de autor",
+        description: "Captura de prueba",
+        price: 3200,
+        currency: "usd",
+      },
+    ]);
+    createOrder.mockResolvedValue({ id: "order-1" });
+    createStripeSession.mockResolvedValue({
+      id: "cs_test_1",
+      url: "https://checkout.stripe.com/session",
+    });
+
+    const response = await POST(
+      new Request("http://localhost:3000/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [{ productId: "product-1", quantity: 1 }],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(createStripeSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cancel_url: "https://fish-store-jet.vercel.app/",
+        success_url:
+          "https://fish-store-jet.vercel.app/order/success?session_id={CHECKOUT_SESSION_ID}",
+      }),
+    );
+  });
+
+  it("rejects production checkout when only localhost redirect URLs are configured", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://localhost:3000");
+    vi.stubEnv("NEXTAUTH_URL", "http://localhost:3000");
+    vi.stubEnv("VERCEL_URL", "");
+    getSession.mockResolvedValue({
+      user: { id: "user-1", email: "account@example.com" },
+    });
+
+    const response = await POST(
+      new Request("https://fish-store-jet.vercel.app/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [{ productId: "product-1", quantity: 1 }],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "No se pudo iniciar el pago. Inténtalo de nuevo.",
+    });
+    expect(findMany).not.toHaveBeenCalled();
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(createStripeSession).not.toHaveBeenCalled();
+  });
 });

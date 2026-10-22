@@ -45,9 +45,9 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_replace_me}
       DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-1}
       AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET to the same strong value on every app server}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-${NEXT_PUBLIC_APP_URL}}
       NEXTAUTH_URL_INTERNAL: ${NEXTAUTH_URL_INTERNAL:-http://app:3000}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?Set NEXT_PUBLIC_APP_URL to this deployment's public URL}
     command: ["node", "server.js"]
     healthcheck:
       test:

@@ -15,7 +15,7 @@ export function StoreHeader() {
         pez<span>c</span>ado
       </Link>
       <nav className="main-nav" aria-label="Navegación principal">
-        <Link href="/#productos">{t("fish")}</Link>
+        <Link href="/#lonja">{t("fish")}</Link>
         <Link href="/orders">{t("orders")}</Link>
         <Link href="/cart" aria-label={`${t("cart")} (${count})`}>
           {t("cart")} <span className="nav-count">{count}</span>

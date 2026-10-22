@@ -10,6 +10,17 @@ test("product artwork is shown uncropped with its name and price overlaid", asyn
   await expect(page.locator(".fish-card-info .fish-price").first()).toBeVisible();
 });
 
+test("the full catalog displays nineteen large product cards", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: "Pescado" }).click();
+
+  const cards = page.locator(".market-card");
+  await expect(cards).toHaveCount(19);
+  await expect(cards.first()).toBeInViewport();
+  const imageBox = await cards.first().locator(".market-card-image").boundingBox();
+  expect(imageBox?.height).toBeGreaterThan(200);
+});
+
 test("language selector updates the page language and persists the choice", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Idioma").selectOption("fr");

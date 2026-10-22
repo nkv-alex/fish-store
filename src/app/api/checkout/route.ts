@@ -17,6 +17,59 @@ const checkoutSchema = z.object({
     .max(50),
 });
 
+function isLoopbackUrl(url: URL) {
+  return ["localhost", "127.0.0.1", "::1"].includes(
+    url.hostname.replace(/^\[|\]$/g, ""),
+  );
+}
+
+function getPublicBaseUrl(request: Request) {
+  const configuredUrls = [
+    process.env.NEXT_PUBLIC_APP_URL?.trim(),
+    process.env.NEXTAUTH_URL?.trim(),
+    process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL.trim()}`
+      : undefined,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => {
+      const url = new URL(value);
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        throw new Error("The public app URL must use HTTP or HTTPS.");
+      }
+      return url;
+    });
+  const publicUrl = configuredUrls.find((url) => !isLoopbackUrl(url));
+  const requestUrl = new URL(request.url);
+  if (publicUrl) {
+    if (
+      process.env.NODE_ENV === "production" &&
+      isLoopbackUrl(publicUrl) &&
+      !isLoopbackUrl(requestUrl)
+    ) {
+      throw new Error(
+        "Stripe checkout cannot use a localhost URL for a public production request.",
+      );
+    }
+    if (
+      process.env.NODE_ENV === "production" &&
+      !isLoopbackUrl(publicUrl) &&
+      publicUrl.protocol !== "https:"
+    ) {
+      throw new Error("The public app URL must use HTTPS in production.");
+    }
+    return publicUrl.origin;
+  }
+  if (process.env.NODE_ENV === "production") {
+    if (!isLoopbackUrl(requestUrl)) {
+      throw new Error(
+        "Set NEXT_PUBLIC_APP_URL or NEXTAUTH_URL to the public app URL before creating Stripe checkout sessions.",
+      );
+    }
+  }
+  return configuredUrls[0]?.origin ?? requestUrl.origin;
+}
+
 export async function POST(request: Request) {
   let body: unknown;
   try {
@@ -49,6 +102,7 @@ export async function POST(request: Request) {
         { status: 401 },
       );
     }
+    const baseUrl = getPublicBaseUrl(request);
     const prisma = getPrisma();
     const email = userSession.user.email;
     const products = await prisma.product.findMany({
@@ -81,7 +135,6 @@ export async function POST(request: Request) {
       },
     });
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
     const session = await getStripe().checkout.sessions.create({
       mode: "payment",
       customer_email: email,
