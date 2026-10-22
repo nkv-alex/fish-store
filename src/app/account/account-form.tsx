@@ -4,6 +4,7 @@ import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useCart } from "@/components/cart-provider";
 import { useLanguage } from "@/components/language-provider";
 
 type AccountFormProps = {
@@ -18,6 +19,7 @@ type AccountFormProps = {
 
 export default function AccountForm({ googleEnabled, user }: AccountFormProps) {
   const { t } = useLanguage();
+  const { count } = useCart();
   const router = useRouter();
   const { update } = useSession();
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -32,6 +34,9 @@ export default function AccountForm({ googleEnabled, user }: AccountFormProps) {
     try {
       const destination = new URL(callbackUrl, window.location.origin);
       if (destination.origin !== window.location.origin) return "/orders";
+      if (destination.pathname === "/" && destination.hash === "#carrito") {
+        return "/cart";
+      }
       return `${destination.pathname}${destination.search}${destination.hash}`;
     } catch {
       return "/orders";
@@ -107,18 +112,46 @@ export default function AccountForm({ googleEnabled, user }: AccountFormProps) {
 
   if (user?.id) {
     return (
-      <section className="account-card account-signed-in" aria-label={t("yourAccount")}>
-        <div className="confirmation-mark">✓</div>
-        <p className="eyebrow">{t("welcomeBack")}</p>
-        <h2>Hola, {user.name || user.email}.</h2>
-        <p>{user.email}</p>
-        <div className="account-nav">
-          <Link href="/account/settings">{t("manageAccount")}</Link>
-          {user.role === "ADMIN" && <Link href="/admin/accounts">{t("adminPanel")}</Link>}
-          <Link href="/orders">{t("viewOrders")}</Link>
-          <Link href="/#productos">{t("returnStore")}</Link>
+      <section className="account-card account-dashboard" aria-label={t("yourAccount")}>
+        <div className="account-profile-heading">
+          <div className="account-avatar" aria-hidden="true">
+            {(user.name || user.email || "?").trim().charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <p className="eyebrow">{t("welcomeBack")}</p>
+            <h2>{t("hello", { name: user.name || user.email || "" })}</h2>
+            <p className="account-dashboard-email">{user.email}</p>
+          </div>
         </div>
-        <button className="account-signout" onClick={() => signOut({ callbackUrl: "/" })}>
+        <div className="account-dashboard-links">
+          <Link className="account-dashboard-link" href="/orders">
+            <span className="account-dashboard-symbol" aria-hidden="true">↗</span>
+            <span>{t("viewOrders")}</span>
+          </Link>
+          <Link className="account-dashboard-link" href="/cart">
+            <span className="account-dashboard-symbol" aria-hidden="true">＋</span>
+            <span>{t("cart")}</span>
+            <span className="account-dashboard-count">{count}</span>
+          </Link>
+          <Link className="account-dashboard-link" href="/account/settings">
+            <span className="account-dashboard-symbol" aria-hidden="true">⚙</span>
+            <span>{t("manageAccount")}</span>
+          </Link>
+          {user.role === "ADMIN" && (
+            <Link className="account-dashboard-link" href="/admin/accounts">
+              <span className="account-dashboard-symbol" aria-hidden="true">⌘</span>
+              <span>{t("adminPanel")}</span>
+            </Link>
+          )}
+          <Link className="account-dashboard-link" href="/#productos">
+            <span className="account-dashboard-symbol" aria-hidden="true">←</span>
+            <span>{t("returnStore")}</span>
+          </Link>
+        </div>
+        <button
+          className="account-signout"
+          onClick={() => signOut({ callbackUrl: "/" })}
+        >
           {t("signOut")}
         </button>
       </section>

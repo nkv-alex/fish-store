@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
+import { ClearCartOnSuccess } from "@/components/clear-cart-on-success";
 import { isLocale, localeTags, translate } from "@/lib/i18n";
 import { getPrisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe";
@@ -46,6 +47,7 @@ export default async function SuccessPage({
 
   return (
     <main className="confirmation">
+      <ClearCartOnSuccess />
       <a className="brand" href="/">pez<span>c</span>ado</a>
       <div className="confirmation-mark">✓</div>
       <p className="eyebrow">{t("paidEyebrow")}</p>

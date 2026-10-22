@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { AuthSessionProvider } from "@/components/auth-session-provider";
+import { CartProvider } from "@/components/cart-provider";
 import { CookieConsent } from "@/components/cookie-consent";
 import { LanguageProvider } from "@/components/language-provider";
 import { ChatWidget } from "@/components/chat-widget";
@@ -24,7 +25,9 @@ export default async function RootLayout({
     <html lang={locale} data-scroll-behavior="smooth">
       <body>
         <LanguageProvider initialLocale={locale}>
-          <AuthSessionProvider>{children}</AuthSessionProvider>
+          <CartProvider>
+            <AuthSessionProvider>{children}</AuthSessionProvider>
+          </CartProvider>
           <CookieConsent />
           <ChatWidget />
         </LanguageProvider>

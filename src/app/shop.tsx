@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+import { useCart } from "@/components/cart-provider";
 import { StoreHeader } from "@/components/store-header";
 import { useLanguage } from "@/components/language-provider";
 import { localeTags } from "@/lib/i18n";
-import { isValidCart, type CartLine } from "@/lib/cart";
 
 export type ShopProduct = {
   id: string;
@@ -26,50 +26,17 @@ function formatPrice(price: number, currency: string, locale: keyof typeof local
 
 export default function Shop({
   products,
-  isAuthenticated,
 }: {
   products: ShopProduct[];
-  isAuthenticated: boolean;
 }) {
   const { locale, t } = useLanguage();
+  const { addToCart } = useCart();
   const heroRef = useRef<HTMLElement>(null);
   const drumTrackRef = useRef<HTMLDivElement>(null);
   const drumAngleRef = useRef(0);
   const drumVelocityRef = useRef(-360 / 58);
   const drumDirectionRef = useRef(-1);
-  const [cart, setCart] = useState<CartLine[]>([]);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-  const count = useMemo(
-    () => cart.reduce((sum, line) => sum + line.quantity, 0),
-    [cart],
-  );
-  const total = useMemo(
-    () =>
-      cart.reduce((sum, line) => {
-        const product = products.find((item) => item.id === line.productId);
-        return sum + (product?.price ?? 0) * line.quantity;
-      }, 0),
-    [cart, products],
-  );
   const featuredProducts = products.slice(0, 5);
-
-  useEffect(() => {
-    try {
-      const savedCart = window.sessionStorage.getItem("fish-store-cart");
-      if (savedCart) {
-        const parsedCart: unknown = JSON.parse(savedCart);
-        if (isValidCart(parsedCart)) {
-          setCart(parsedCart);
-        } else {
-          setError(t("cartRestoreError"));
-        }
-        window.sessionStorage.removeItem("fish-store-cart");
-      }
-    } catch {
-      setError(t("cartSessionError"));
-    }
-  }, []);
 
   useEffect(() => {
     const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -179,68 +146,9 @@ export default function Shop({
     drumDirectionRef.current = -1;
   }
 
-  function addToCart(productId: string) {
-    setError("");
-    setCart((current) => {
-      const existing = current.find((line) => line.productId === productId);
-      if (existing) {
-        return current.map((line) =>
-          line.productId === productId
-            ? { ...line, quantity: Math.min(line.quantity + 1, 10) }
-            : line,
-        );
-      }
-      return [...current, { productId, quantity: 1 }];
-    });
-  }
-
-  function removeFromCart(productId: string) {
-    setCart((current) => current.filter((line) => line.productId !== productId));
-  }
-
-  function saveCartForAccount() {
-    try {
-      window.sessionStorage.setItem("fish-store-cart", JSON.stringify(cart));
-      return true;
-    } catch {
-      setError(t("cartSaveError"));
-      return false;
-    }
-  }
-
-  async function checkout(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPending(true);
-    setError("");
-
-    try {
-      const response = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: cart }),
-      });
-      const data: { url?: string; error?: string } = await response.json();
-      if (response.status === 401 && saveCartForAccount()) {
-        window.location.assign("/account?callbackUrl=%2F%23carrito");
-        return;
-      }
-      if (!response.ok || !data.url) {
-        throw new Error(data.error ?? t("checkoutError"));
-      }
-      window.location.assign(data.url);
-    } catch (checkoutError) {
-      setError(
-        checkoutError instanceof Error
-          ? checkoutError.message
-          : t("checkoutError"),
-      );
-      setPending(false);
-    }
-  }
-
   return (
     <main>
-      <StoreHeader count={count} />
+      <StoreHeader />
 
       <section className="intro-scene">
         <section className="hero" ref={heroRef}>
@@ -338,61 +246,11 @@ export default function Shop({
         </div>
       </section>
 
-      <section className="cart-section" id="carrito" aria-labelledby="cart-title" data-scroll-reveal>
-        <div className="cart-panel">
-          <div className="cart-panel-heading">
-            <div>
-              <p className="eyebrow">{t("trustTaste")}</p>
-              <h2 id="cart-title">{t("cartTitle")} <span>({count})</span></h2>
-              <p className="checkout-note">{t("securePayment")}</p>
-            </div>
-            <Link className="orders-shortcut" href="/orders">{t("myOrders")} <span aria-hidden="true">↗</span></Link>
-          </div>
-          {cart.length === 0 ? (
-            <p className="empty-cart">{t("emptyCart")}</p>
-          ) : (
-            <div className="checkout-form">
-            <ul className="cart-lines">
-              {cart.map((line) => {
-                const product = products.find((item) => item.id === line.productId);
-                if (!product) return null;
-                return (
-                  <li key={line.productId}>
-                    <span>
-                      {product.name} <span className="quantity">× {line.quantity}</span>
-                      <button type="button" className="remove-item" onClick={() => removeFromCart(line.productId)}>{t("remove")}</button>
-                    </span>
-                    <span>{formatPrice(product.price * line.quantity, product.currency, locale)}</span>
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="cart-total"><span>{t("total")}</span><strong>{formatPrice(total, products.find((product) => product.id === cart[0]?.productId)?.currency ?? "usd", locale)}</strong></div>
-            {isAuthenticated ? (
-              <form onSubmit={checkout}>
-                {error && <p className="form-error" role="alert">{error}</p>}
-                <button className="checkout-button" disabled={pending}>
-                  {pending ? t("preparingPayment") : t("payWithStripe")}
-                </button>
-              </form>
-            ) : (
-              <>
-                <p className="checkout-note">{t("accountRequired")}</p>
-                {error && <p className="form-error" role="alert">{error}</p>}
-                <Link
-                  className="checkout-button account-checkout-link"
-                  href="/account?callbackUrl=%2F%23carrito"
-                  onClick={(event) => {
-                    if (!saveCartForAccount()) event.preventDefault();
-                  }}
-                >
-                  {t("signInOrRegister")}
-                </Link>
-              </>
-            )}
-            </div>
-          )}
-        </div>
+      <section className="cart-promo">
+        <p className="eyebrow">{t("trustTaste")}</p>
+        <h2>{t("cartTitle")}</h2>
+        <p>{t("securePayment")}</p>
+        <Link className="cart-continue-button" href="/cart">{t("cartTitle")}</Link>
       </section>
       <footer>
         <Link className="brand" href="/">pez<span>c</span>ado</Link>

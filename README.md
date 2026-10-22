@@ -2,6 +2,8 @@
 
 Tienda de ejemplo con Next.js, TypeScript, PostgreSQL, Prisma y Stripe Checkout en modo test.
 
+El carrito tiene una página propia (`/cart`), se mantiene accesible desde la navegación y conserva sus artículos en el navegador al cambiar de página o iniciar sesión.
+
 ## Modelo de datos
 
 El schema Prisma está en [prisma/schema.prisma](./prisma/schema.prisma). `Product` guarda precio en unidades menores (centavos) y moneda; `Order` conserva correo, total, estado y referencia única de Stripe. `OrderItem` registra cantidad y precio unitario al comprar para preservar el importe histórico. El checkout requiere una cuenta y asocia los pedidos con ella.
@@ -43,12 +45,12 @@ openssl rand -base64 32
 # Guarda el resultado como AUTH_SECRET en .env antes de iniciar Compose.
 docker compose up -d db
 docker compose run --rm migrate
-docker compose up -d --build app
+docker compose up -d --build app nginx
 docker compose ps
 docker compose logs -f app
 ```
 
-Para detenerla explícitamente, usa `docker compose down`. Para desarrollo local, `DATABASE_URL` y `DIRECT_URL` apuntan al PostgreSQL de Docker. En Neon, la app usa `DATABASE_URL` (conexión pooled) y Prisma CLI usa `DIRECT_URL` (conexión directa para migraciones); la selección del adaptador es automática por hostname.
+Nginx se ejecuta en su propio contenedor y reenvía las solicitudes a Next.js; la tienda sigue disponible en [http://localhost:3000](http://localhost:3000). El puerto de la app no se publica directamente en el host. Para detener los servicios, usa `docker compose down`. Para desarrollo local, `DATABASE_URL` y `DIRECT_URL` apuntan al PostgreSQL de Docker. En Neon, la app usa `DATABASE_URL` (conexión pooled) y Prisma CLI usa `DIRECT_URL` (conexión directa para migraciones); la selección del adaptador es automática por hostname.
 
 ### Autenticación
 
@@ -136,10 +138,10 @@ Para levantar app y base de datos en contenedores por primera vez:
 ```bash
 docker compose up -d db
 docker compose run --rm migrate
-docker compose up -d --build app
+docker compose up -d --build app nginx
 ```
 
-Compose reinicia la app si se detiene inesperadamente y comprueba su disponibilidad con `/api/health/ready`. Sigue su salida con `docker compose logs -f app`. Ejecuta el seed una vez después de que el servicio esté listo con `docker compose exec app npm run db:seed`.
+Compose reinicia los servicios si se detienen inesperadamente y comprueba la disponibilidad de la app con `/api/health/ready` antes de iniciar Nginx. Sigue la salida de la app con `docker compose logs -f app` o la de Nginx con `docker compose logs -f nginx`. Ejecuta el seed una vez después de que el servicio esté listo con `docker compose exec app npm run db:seed`. Nginx publica el puerto 3000 del host; para TLS en producción, termina HTTPS en un balanceador o proxy con certificados y configura allí la URL pública de la app.
 
 ## Pruebas y CI
 

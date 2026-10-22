@@ -32,15 +32,23 @@ test("floating chat opens and closes without requiring provider configuration", 
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
-test("cart is a separate section and receives products added from the carousel", async ({ page }) => {
+test("cart is a separate page and keeps products added from the collection", async ({ page }) => {
   await page.goto("/");
   await page.locator(".market-add").first().click();
   await page.getByRole("link", { name: /Carrito/ }).click();
 
-  const cart = page.locator("#carrito");
+  const cart = page.locator(".cart-page");
   await expect(cart).toBeVisible();
-  await expect(cart.locator(".cart-lines li")).toHaveCount(1);
-  await expect(cart.getByRole("heading", { name: /Tu carrito \(1\)/ })).toBeVisible();
+  await expect(cart.locator(".cart-item-list li")).toHaveCount(1);
+  await expect(
+    cart.getByRole("heading", { level: 1, name: "Tu carrito" }),
+  ).toBeVisible();
+  await cart.getByRole("button", { name: /Aumentar cantidad/ }).click();
+  await expect(cart.locator(".cart-quantity-control span")).toHaveText("2");
+  await page.reload();
+  await expect(page.locator(".cart-quantity-control span")).toHaveText("2");
+  await page.getByRole("button", { name: "Quitar" }).click();
+  await expect(page.locator(".cart-empty-state")).toBeVisible();
 });
 
 test("registration requires matching password confirmation", async ({ page }) => {

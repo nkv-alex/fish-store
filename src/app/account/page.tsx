@@ -14,7 +14,7 @@ export default async function AccountPage() {
       <StoreHeader />
       <main className="account-page">
         <div className="account-layout">
-          <AccountIntro />
+          <AccountIntro signedIn={Boolean(session?.user.id)} />
           <AccountForm
             googleEnabled={googleSignInEnabled}
             user={
