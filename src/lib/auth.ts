@@ -5,6 +5,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import { z } from "zod";
 import { getPrisma } from "@/lib/prisma";
+import { consumeRateLimit } from "@/lib/rate-limit";
 
 const credentialsSchema = z.object({
   email: z.string().trim().pipe(z.email()),
@@ -15,6 +16,46 @@ const credentialsSchema = z.object({
     .refine((password) => Buffer.byteLength(password, "utf8") <= 72),
 });
 
+export async function authorizeCredentials(
+  credentials: unknown,
+  clientIp = "unknown",
+) {
+  const parsed = credentialsSchema.safeParse(credentials);
+  if (!parsed.success) return null;
+
+  const email = parsed.data.email.trim().toLowerCase();
+  const rateLimit = await consumeRateLimit({
+    scope: "login",
+    identifier: `${email}:${clientIp}`,
+    limit: 10,
+    windowMs: 15 * 60 * 1000,
+  });
+  if (!rateLimit.allowed) return null;
+
+  const user = await getPrisma().user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      image: true,
+      passwordHash: true,
+      isActive: true,
+    },
+  });
+  if (!user?.passwordHash || !user.isActive) return null;
+
+  const validPassword = await compare(parsed.data.password, user.passwordHash);
+  if (!validPassword) return null;
+
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    image: user.image,
+  };
+}
+
 const providers: NextAuthOptions["providers"] = [
   CredentialsProvider({
     name: "Email",
@@ -22,33 +63,12 @@ const providers: NextAuthOptions["providers"] = [
       email: { label: "Correo electrónico", type: "email" },
       password: { label: "Contraseña", type: "password" },
     },
-    async authorize(credentials) {
-      const parsed = credentialsSchema.safeParse(credentials);
-      if (!parsed.success) return null;
-
-      const email = parsed.data.email.trim().toLowerCase();
-      const user = await getPrisma().user.findUnique({
-        where: { email },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-          passwordHash: true,
-          isActive: true,
-        },
-      });
-      if (!user?.passwordHash || !user.isActive) return null;
-
-      const validPassword = await compare(parsed.data.password, user.passwordHash);
-      if (!validPassword) return null;
-
-      return {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        image: user.image,
-      };
+    async authorize(credentials, request) {
+      const clientIp =
+        request.headers?.["x-real-ip"] ??
+        request.headers?.["x-forwarded-for"]?.split(",").at(-1)?.trim() ??
+        "unknown";
+      return authorizeCredentials(credentials, clientIp);
     },
   }),
 ];

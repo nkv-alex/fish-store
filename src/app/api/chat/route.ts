@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { locales } from "@/lib/i18n";
+import { consumeRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -104,6 +105,29 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "Invalid chat message." },
       { status: 400, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  const clientIp =
+    request.headers.get("x-real-ip") ??
+    request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() ??
+    "unknown";
+  const rateLimit = await consumeRateLimit({
+    scope: "chat",
+    identifier: clientIp,
+    limit: 10,
+    windowMs: 60_000,
+  });
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Demasiadas solicitudes. Inténtalo de nuevo más tarde." },
+      {
+        status: 429,
+        headers: {
+          "Cache-Control": "no-store",
+          "Retry-After": String(rateLimit.retryAfterSeconds),
+        },
+      },
     );
   }
 

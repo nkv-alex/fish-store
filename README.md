@@ -125,7 +125,7 @@ La página de retorno del navegador mejora la experiencia, pero no sustituye la 
 | `POST /api/webhooks/stripe` | Validar eventos firmados y reflejar pagos completados. |
 | `GET, PATCH /api/admin/users` | Buscar/paginar cuentas y cambiar su rol o estado; requiere administrador. |
 | `POST /api/metrics` | Incrementar métricas agregadas solo con consentimiento válido. |
-| `POST /api/chat` | Enviar una conversación validada al proveedor configurado. |
+| `POST /api/chat` | Enviar una conversación validada al proveedor configurado, con límite por cliente. |
 | `/api/auth/[...nextauth]` | Flujos de autenticación de NextAuth. |
 | `GET /api/health/live` | Liveness del proceso. |
 | `GET /api/health/ready` | Readiness con consulta real a PostgreSQL; devuelve `503` si no está disponible. |
@@ -142,6 +142,7 @@ Definido en [`prisma/schema.prisma`](./prisma/schema.prisma) y versionado en [`p
 | `Order` | Comprador, estado, total y referencia única de sesión de Stripe. |
 | `OrderItem` | Cantidad y copia del precio unitario en el momento de la compra. |
 | `DailyPageMetric` | Contador por fecha y ruta, sin identidad de visitante. |
+| `RateLimitBucket` | Contador temporal por identificador seudonimizado para limitar login y chat entre instancias. |
 
 Los estados de pedido son `PENDING`, `PAID` y `CANCELLED`; los roles son `USER` y `ADMIN`. Los pedidos pueden conservarse al eliminar una cuenta, desvinculándolos y sustituyendo los datos de correo según la lógica de cierre de cuenta.
 
@@ -201,7 +202,7 @@ Configura el valor `whsec_...` mostrado por Stripe CLI como `STRIPE_WEBHOOK_SECR
 
 ### Docker Compose con Nginx
 
-La configuración Compose utiliza PostgreSQL, un servicio de migración de mantenimiento, la aplicación Next.js y Nginx. Configura en `.env` las variables requeridas `AUTH_SECRET` y `NEXT_PUBLIC_APP_URL`; para desarrollo local, usa la URL `http://localhost:3000`.
+La configuración Compose utiliza PostgreSQL, un servicio de migración de mantenimiento, la aplicación Next.js y Nginx. Configura en `.env` las variables requeridas `AUTH_SECRET` y `NEXT_PUBLIC_APP_URL`; para desarrollo local, usa la URL `http://localhost:3000`. Nginx reenvía `X-Real-IP` al servidor para los límites de solicitudes.
 
 ```bash
 docker compose up -d db
@@ -258,7 +259,7 @@ Configura el ID y el secreto de cliente en el entorno del servidor. El dominio d
 
 ### Habilitar el asistente
 
-Configura `PERPLEXITY_API_KEY` y un `PERPLEXITY_ROUTER_MODEL` permitido por el catálogo asociado a esa clave. Router puede requerir habilitación del proveedor y los modelos disponibles dependen de la cuenta. El endpoint de chat limita el tamaño de solicitud y el número de mensajes; para exposición pública, añade limitación de frecuencia en el gateway o proxy.
+Configura `PERPLEXITY_API_KEY` y un `PERPLEXITY_ROUTER_MODEL` permitido por el catálogo asociado a esa clave. Router puede requerir habilitación del proveedor y los modelos disponibles dependen de la cuenta. El endpoint limita el tamaño de solicitud, el número de mensajes y las peticiones por dirección de cliente. Detrás de un proxy, configura `X-Real-IP` con la IP observada por el proxy; la aplicación usa ese encabezado para aplicar límites consistentes. Para internet público, asegúrate de que el proxy sobrescriba ese encabezado y no acepte su valor arbitrario del cliente.
 
 ## Pruebas y calidad
 
@@ -303,7 +304,7 @@ En el despliegue, aplica migraciones pendientes con:
 npm run db:deploy
 ```
 
-Ejecuta las migraciones **una sola vez por despliegue**, antes de activar la nueva versión; no las ejecutes simultáneamente desde cada réplica. `npm run db:seed` es idempotente y carga/actualiza el catálogo de demostración.
+Ejecuta las migraciones **una sola vez por despliegue**, antes de activar la nueva versión; no las ejecutes simultáneamente desde cada réplica. `npm run db:seed` es idempotente y carga/actualiza el catálogo de demostración. La migración de `RateLimitBucket` también debe aplicarse antes de activar la versión que limita login y chat.
 
 Para despliegues de producción con Vercel, `npm run vercel-build` ejecuta migraciones y seed cuando `VERCEL_ENV=production`, y después compila Next.js. Asegúrate de que `DIRECT_URL` y `DATABASE_URL` estén disponibles durante ese build y ten presente que las migraciones se aplican antes de publicar la nueva compilación.
 
@@ -319,7 +320,8 @@ Todas las réplicas deben compartir la misma base de datos, `AUTH_SECRET` y URL 
 - **Sesiones revocables:** `authVersion` permite invalidar JWT existentes tras cambio de contraseña o actualización administrativa.
 - **Estado de carrito en cliente:** ofrece continuidad entre páginas sin crear un carrito persistido en base de datos; un dispositivo/navegador mantiene su propio carrito.
 - **Métricas mínimas:** las métricas opcionales se agregan por día y ruta, y requieren consentimiento explícito.
-- **Operación del chat:** no hay rate limiting distribuido incluido; protéjelo en infraestructura antes de permitir uso público a gran escala.
+- **Límites de solicitudes:** login y chat usan contadores de ventana fija persistidos en PostgreSQL, con claves SHA-256 y limpieza oportunista de buckets expirados. El login permite 10 intentos por dirección y correo cada 15 minutos; el chat permite 10 solicitudes por IP por minuto. El proxy debe proporcionar una IP de cliente confiable.
+- **Pedidos pendientes:** si falla la creación de una sesión de Stripe después de crear el pedido, el pedido puede quedarse en `PENDING`. Los pedidos no pagados deben supervisarse y limpiarse mediante una política de retención o una tarea operativa; el proyecto no incluye un job periódico de limpieza.
 - **Legal y comercio:** los textos legales son un borrador técnico. Completa identidad del responsable, contacto, países de venta, envíos, devoluciones y demás obligaciones antes de operar.
 - **Stripe:** el proyecto rechaza el uso de claves live y no está preparado como tienda de producción para cobros reales.
 
@@ -346,6 +348,8 @@ Todas las réplicas deben compartir la misma base de datos, `AUTH_SECRET` y URL 
 ├── docker-compose.yml
 └── README.md
 ```
+
+El nombre público del producto y el paquete npm es **Pezcado**. El repositorio remoto y los nombres históricos de variables/cookies conservan `fish-store` por compatibilidad.
 
 ## Presentación breve para entrevista
 

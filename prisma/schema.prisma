@@ -115,6 +115,15 @@ model DailyPageMetric {
   @@id([day, path])
 }
 
+model RateLimitBucket {
+  key             String   @id
+  windowStartedAt DateTime
+  attempts        Int      @default(0)
+  expiresAt       DateTime
+
+  @@index([expiresAt])
+}
+
 enum OrderStatus {
   PENDING
   PAID

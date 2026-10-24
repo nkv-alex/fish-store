@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OpenAI from "openai";
 import { POST } from "./route";
 
-const { createCompletion, configureClient } = vi.hoisted(() => ({
+const { createCompletion, configureClient, consumeRateLimit } = vi.hoisted(() => ({
   createCompletion: vi.fn(),
   configureClient: vi.fn(),
+  consumeRateLimit: vi.fn(),
 }));
 
 vi.mock("openai", () => {
@@ -31,6 +32,8 @@ vi.mock("openai", () => {
   };
 });
 
+vi.mock("@/lib/rate-limit", () => ({ consumeRateLimit }));
+
 function chatRequest(body: unknown) {
   return new Request("http://localhost/api/chat", {
     method: "POST",
@@ -45,6 +48,7 @@ describe("Perplexity Router chat API", () => {
     vi.stubEnv("PERPLEXITY_ROUTER_MODEL", "configured-by-test");
     createCompletion.mockReset();
     configureClient.mockReset();
+    consumeRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
   });
 
   afterEach(() => {
@@ -121,6 +125,19 @@ describe("Perplexity Router chat API", () => {
     }));
 
     expect(response.status).toBe(400);
+    expect(createCompletion).not.toHaveBeenCalled();
+  });
+
+  it("returns 429 with Retry-After when the client exceeds the chat limit", async () => {
+    consumeRateLimit.mockResolvedValue({ allowed: false, retryAfterSeconds: 30 });
+
+    const response = await POST(chatRequest({
+      locale: "en",
+      messages: [{ role: "user", content: "Hello" }],
+    }));
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("30");
     expect(createCompletion).not.toHaveBeenCalled();
   });
 
