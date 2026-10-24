@@ -154,24 +154,19 @@ export default function Shop({
         <section className="hero" ref={heroRef}>
           <div className="hero-content">
             <p className="eyebrow">{t("heroEyebrow")}</p>
-            <p className="hero-edition">{t("heroEdition")}</p>
             <h1>{t("heroTitle")}</h1>
             <p className="hero-description">{t("heroDescription")}</p>
             <a className="hero-link" href="#productos">
               {t("viewCatch")} <span aria-hidden="true">↓</span>
             </a>
           </div>
-          <div className="hero-coordinate" aria-hidden="true">37°46&apos; N — 25°40&apos; W</div>
-          <div className="hero-stamp" aria-hidden="true"><span>{t("stampTop")}</span><strong>{t("stampMiddle")}</strong><span>{t("stampBottom")}</span></div>
         </section>
 
         <section className="drum-section" id="productos" aria-labelledby="drum-title">
           <div className="section-heading drum-heading">
             <div>
-              <p className="eyebrow">{t("catchEyebrow")}</p>
               <h2 id="drum-title">{t("catchTitle")}</h2>
             </div>
-            <p>{t("catchHint")}</p>
           </div>
 
           {featuredProducts.length === 0 ? (
@@ -195,8 +190,6 @@ export default function Shop({
                         {/* Seeded catalog images are served from public/. */}
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={product.imageUrl} alt={product.name} />
-                        <span className="catch-number">CAPTURA 0{index + 1}</span>
-                        <span className="catch-status">{t("justInvented")}</span>
                         <div className="fish-card-info">
                           <h3>{product.name}</h3>
                           <span className="fish-price">{formatPrice(product.price, product.currency, locale)}</span>
@@ -216,7 +209,6 @@ export default function Shop({
               </div>
             </div>
           )}
-          <p className="drum-footnote">{t("drumFootnote")}</p>
         </section>
       </section>
 
@@ -227,11 +219,7 @@ export default function Shop({
         data-scroll-reveal
       >
         <div className="section-heading">
-          <div>
-            <p className="eyebrow">{t("collectionEyebrow")}</p>
-            <h2 id="market-title">{t("collectionTitle")}</h2>
-          </div>
-          <p>{t("collectionHint")}</p>
+          <h2 id="market-title">{t("collectionTitle")}</h2>
         </div>
         <div className="market-list">
           {products.map((product, index) => (
@@ -268,15 +256,8 @@ export default function Shop({
         </div>
       </section>
 
-      <section className="cart-promo">
-        <p className="eyebrow">{t("trustTaste")}</p>
-        <h2>{t("cartTitle")}</h2>
-        <p>{t("securePayment")}</p>
-        <Link className="cart-continue-button" href="/cart">{t("cartTitle")}</Link>
-      </section>
       <footer>
         <Link className="brand" href="/">pez<span>c</span>ado</Link>
-        <span>{t("productFresh")}</span>
         <span><Link href="/account">{t("yourAccount")}</Link> · © 2026 Pezcado</span>
         <nav className="legal-links" aria-label={t("privacy")}>
           <Link href="/privacy">{t("privacy")}</Link>

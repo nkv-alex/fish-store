@@ -1,162 +1,352 @@
 # Pezcado
 
-Tienda de ejemplo con Next.js, TypeScript, PostgreSQL, Prisma y Stripe Checkout en modo test.
+**Pezcado** es una tienda online de pescado ficticio construida como proyecto full-stack. Combina un escaparate responsive con cuentas de usuario, carrito persistente, checkout de Stripe, gestión de pedidos y administración de cuentas.
 
-El carrito tiene una página propia (`/cart`), se mantiene accesible desde la navegación y conserva sus artículos en el navegador al cambiar de página o iniciar sesión.
+El proyecto está pensado para demostrar decisiones de producto e ingeniería de extremo a extremo: validación en servidor, persistencia relacional, pagos confirmados por webhook, controles de acceso y despliegue en contenedores.
+
+> **Estado:** proyecto de portfolio y demostración. Stripe está limitado a modo de prueba. Completa la información legal, comercial y de operación antes de aceptar ventas reales.
+
+## Índice
+
+- [Qué incluye](#qué-incluye)
+- [Arquitectura](#arquitectura)
+- [Flujos principales](#flujos-principales)
+- [Rutas](#rutas)
+- [Modelo de datos](#modelo-de-datos)
+- [Tecnologías](#tecnologías)
+- [Ejecución local](#ejecución-local)
+- [Variables de entorno](#variables-de-entorno)
+- [Pruebas y calidad](#pruebas-y-calidad)
+- [Despliegue](#despliegue)
+- [Decisiones y límites conocidos](#decisiones-y-límites-conocidos)
+- [Estructura del repositorio](#estructura-del-repositorio)
+
+## Qué incluye
+
+- Catálogo de 19 productos con ilustraciones propias, precios almacenados en unidades menores de la moneda y una vista de colección responsive.
+- Carrito en página independiente, accesible desde la navegación, con cantidades limitadas y persistencia en `localStorage`.
+- Registro con contraseña y acceso con credenciales; Google OAuth es opcional. Las contraseñas se almacenan con hash bcrypt.
+- Gestión de cuenta: edición del perfil, cambio de contraseña y cierre de cuenta con confirmación.
+- Checkout con Stripe Checkout. El servidor vuelve a consultar el catálogo y calcula los importes; el navegador no determina los precios.
+- Historial de pedidos asociado a la cuenta, y páginas de confirmación y cancelación.
+- Panel de administración con búsqueda y paginación de cuentas, cambio de rol y activación/desactivación de acceso.
+- Interfaz en español, inglés, francés y alemán; preferencia de idioma guardada en cookie.
+- Páginas legales, consentimiento de cookies y métricas diarias agregadas opcionales.
+- Chat de ayuda en servidor mediante Perplexity Router, configurable por variables de entorno.
+- Página 404 propia y endpoints de salud para supervisión.
+
+## Arquitectura
+
+La aplicación usa el App Router de Next.js como frontend y backend: páginas y componentes de servidor consultan los datos directamente; Route Handlers exponen operaciones JSON a la interfaz, Stripe y herramientas de operación.
+
+```mermaid
+flowchart LR
+    Browser[Navegador]
+    Proxy[Nginx / proxy TLS]
+    Next[Next.js App Router<br/>páginas y Route Handlers]
+    Auth[NextAuth<br/>JWT + credenciales / Google]
+    DB[(PostgreSQL)]
+    Stripe[Stripe Checkout<br/>webhook firmado]
+    Chat[Perplexity Router API]
+
+    Browser --> Proxy
+    Proxy --> Next
+    Next --> Auth
+    Next --> DB
+    Next --> Stripe
+    Stripe -->|webhook| Next
+    Next --> Chat
+```
+
+En desarrollo local, Docker Compose puede ejecutar PostgreSQL, la aplicación Next.js y Nginx. En una instalación sin contenedores, Next.js se puede iniciar directamente con `npm run dev`.
+
+### Componentes y responsabilidades
+
+| Área | Responsabilidad |
+| --- | --- |
+| `src/app/` | Páginas del App Router, endpoints HTTP y estilos globales. |
+| `src/components/` | Cabecera, proveedores de sesión/carrito/idioma, consentimiento y chat compartidos. |
+| `src/lib/` | Configuración de autenticación, Prisma, Stripe, carrito e internacionalización. |
+| `prisma/` | Esquema relacional, migraciones, seed del catálogo y promoción inicial de administrador. |
+| `e2e/` | Pruebas de flujos de navegador con Playwright. |
+| `.github/workflows/ci.yml` | Tests, análisis estático y publicación de imagen en GHCR desde `main`. |
+| `Dockerfile`, `docker-compose.yml`, `nginx/` | Imagen de producción y topología local con proxy inverso. |
+
+## Flujos principales
+
+### Compra
+
+1. El navegador conserva identificadores de producto y cantidades en el carrito; nunca envía importes confiables.
+2. `POST /api/checkout` valida la solicitud y requiere una sesión de usuario.
+3. El servidor consulta productos activos en PostgreSQL, comprueba cantidades y moneda, calcula el total y crea un pedido `PENDING` con sus líneas e importes históricos.
+4. Se crea una sesión de Stripe Checkout y se guarda su identificador asociado al pedido.
+5. Stripe notifica el pago a `POST /api/webhooks/stripe`. El servidor verifica la firma del webhook y actualiza el pedido a `PAID` cuando el pago está completado.
+6. La página de éxito comprueba también la sesión y el estado de pago antes de mostrar la confirmación y vaciar el carrito. Un enlace sin sesión válida se trata como no encontrado.
+
+La página de retorno del navegador mejora la experiencia, pero no sustituye la verificación del webhook como fuente de confirmación del pago.
+
+### Autenticación y autorización
+
+- NextAuth usa sesiones JWT, con adaptador Prisma para persistencia de cuentas OAuth.
+- El proveedor de credenciales compara el hash bcrypt; Google se habilita solo cuando están configurados ambos secretos OAuth.
+- El rol se verifica en el servidor para operaciones administrativas. El cliente no decide sus permisos.
+- `authVersion` permite invalidar sesiones JWT después de cambios sensibles de cuenta o administración.
+- Las cuentas empiezan con rol `USER`. El primer administrador se promueve mediante un comando operativo explícito.
+
+### Carrito
+
+`CartProvider` centraliza el estado compartido entre páginas y sincroniza sus líneas con `localStorage`. El carrito contiene referencias y cantidades, no precios de confianza; los precios y disponibilidad se resuelven en el servidor al iniciar el checkout.
+
+## Rutas
+
+### Páginas
+
+| Ruta | Descripción |
+| --- | --- |
+| `/` | Portada, productos destacados y catálogo. |
+| `/cart` | Carrito y resumen del pedido. |
+| `/account` | Registro e inicio de sesión. |
+| `/account/settings` | Perfil, contraseña y cierre de cuenta. |
+| `/orders` | Historial del usuario autenticado. |
+| `/admin/accounts` | Gestión de cuentas para administradores. |
+| `/order/success` | Confirmación verificada de un pago. |
+| `/order/cancelled` | Retorno informativo de un checkout cancelado. |
+| `/privacy`, `/cookies`, `/terms` | Información legal y configuración de consentimiento. |
+| Cualquier ruta desconocida | Página 404 de marca. |
+
+### API
+
+| Método y ruta | Uso |
+| --- | --- |
+| `GET /api/products` | Catálogo de productos activos. |
+| `POST /api/register` | Registro con validación de datos y hash de contraseña. |
+| `PATCH, DELETE /api/account` | Actualizar perfil o contraseña; cerrar la cuenta autenticada. |
+| `POST /api/checkout` | Crear pedido pendiente y sesión de Stripe Checkout. |
+| `POST /api/webhooks/stripe` | Validar eventos firmados y reflejar pagos completados. |
+| `GET, PATCH /api/admin/users` | Buscar/paginar cuentas y cambiar su rol o estado; requiere administrador. |
+| `POST /api/metrics` | Incrementar métricas agregadas solo con consentimiento válido. |
+| `POST /api/chat` | Enviar una conversación validada al proveedor configurado. |
+| `/api/auth/[...nextauth]` | Flujos de autenticación de NextAuth. |
+| `GET /api/health/live` | Liveness del proceso. |
+| `GET /api/health/ready` | Readiness con consulta real a PostgreSQL; devuelve `503` si no está disponible. |
 
 ## Modelo de datos
 
-El schema Prisma está en [prisma/schema.prisma](./prisma/schema.prisma). `Product` guarda precio en unidades menores (centavos) y moneda; `Order` conserva correo, total, estado y referencia única de Stripe. `OrderItem` registra cantidad y precio unitario al comprar para preservar el importe histórico. El checkout requiere una cuenta y asocia los pedidos con ella.
+Definido en [`prisma/schema.prisma`](./prisma/schema.prisma) y versionado en [`prisma/migrations/`](./prisma/migrations/).
 
-## Requisitos
+| Modelo | Propósito |
+| --- | --- |
+| `User` | Identidad, credenciales, rol, estado de acceso y versión de autenticación. |
+| `Account`, `Session`, `VerificationToken` | Modelos de soporte del adaptador de NextAuth. La aplicación usa sesiones JWT. |
+| `Product` | Catálogo, slug, disponibilidad, moneda y precio en unidades menores (por ejemplo, céntimos). |
+| `Order` | Comprador, estado, total y referencia única de sesión de Stripe. |
+| `OrderItem` | Cantidad y copia del precio unitario en el momento de la compra. |
+| `DailyPageMetric` | Contador por fecha y ruta, sin identidad de visitante. |
 
-- Node.js 22+
-- Docker y Docker Compose
-- Una cuenta de Stripe para pagos de prueba
+Los estados de pedido son `PENDING`, `PAID` y `CANCELLED`; los roles son `USER` y `ADMIN`. Los pedidos pueden conservarse al eliminar una cuenta, desvinculándolos y sustituyendo los datos de correo según la lógica de cierre de cuenta.
 
-## Desarrollo local
+## Tecnologías
 
-1. Instala dependencias y prepara variables:
+- **Aplicación:** Next.js 16, React 19, TypeScript.
+- **Datos:** PostgreSQL, Prisma 7 y adaptadores PostgreSQL/Neon.
+- **Identidad:** NextAuth, credenciales, bcrypt y Google OAuth opcional.
+- **Pagos:** Stripe Checkout y webhooks firmados.
+- **Validación:** Zod.
+- **Asistente:** SDK OpenAI Chat Completions apuntando al endpoint de Perplexity Router.
+- **Calidad:** Vitest, Playwright, TypeScript, GitHub Actions, npm audit y CodeQL.
+- **Operación:** Docker multi-stage, Docker Compose y Nginx.
 
-   ```bash
-   npm ci
-   cp .env.example .env
-   ```
+## Ejecución local
 
-2. Arranca PostgreSQL:
+### Requisitos
 
-   ```bash
-   docker compose up -d db
-   ```
+- Node.js 22 o superior y npm.
+- Docker con Docker Compose, para iniciar PostgreSQL local.
+- Una cuenta de Stripe en modo de prueba para verificar el flujo de pago.
 
-3. Aplica migraciones, carga el catálogo y arranca Next.js:
+### Preparar la aplicación
 
-   ```bash
-   npm run db:generate
-   npm run db:deploy
-   npm run db:seed
-   npm run dev
-   ```
+```bash
+npm ci
+cp .env.example .env
+```
 
-La tienda estará en [http://localhost:3000](http://localhost:3000). `npm run dev` mantiene Next.js en primer plano: no cierres esa terminal si quieres que la app siga activa. Para dejarla ejecutándose en segundo plano y reiniciarla si el contenedor falla, usa Docker Compose:
+Edita `.env` para el entorno local. Usa una base local, una clave aleatoria para `AUTH_SECRET` y claves de prueba de Stripe. Por ejemplo, genera el secreto con:
 
 ```bash
 openssl rand -base64 32
-# Guarda el resultado como AUTH_SECRET en .env antes de iniciar Compose.
-# En desarrollo, configura NEXT_PUBLIC_APP_URL y NEXTAUTH_URL como http://localhost:3000.
+```
+
+Inicia la base de datos, aplica las migraciones, crea los productos de demostración y ejecuta Next.js:
+
+```bash
+docker compose up -d db
+npm run db:generate
+npm run db:deploy
+npm run db:seed
+npm run dev
+```
+
+Abre [http://localhost:3000](http://localhost:3000). Para iniciar sesión localmente basta el proveedor de credenciales; Google OAuth y el chat son opcionales. Si no configuras Stripe, el checkout no podrá crear sesiones.
+
+### Probar webhooks de Stripe
+
+Instala Stripe CLI, inicia sesión y reenvía los eventos al endpoint local:
+
+```bash
+stripe listen --forward-to localhost:3000/api/webhooks/stripe
+```
+
+Configura el valor `whsec_...` mostrado por Stripe CLI como `STRIPE_WEBHOOK_SECRET`. Usa una tarjeta de prueba de Stripe, por ejemplo `4242 4242 4242 4242`, con cualquier fecha futura y CVC de tres dígitos.
+
+### Docker Compose con Nginx
+
+La configuración Compose utiliza PostgreSQL, un servicio de migración de mantenimiento, la aplicación Next.js y Nginx. Configura en `.env` las variables requeridas `AUTH_SECRET` y `NEXT_PUBLIC_APP_URL`; para desarrollo local, usa la URL `http://localhost:3000`.
+
+```bash
 docker compose up -d db
 docker compose run --rm migrate
 docker compose up -d --build app nginx
+docker compose exec app npm run db:seed
 docker compose ps
 docker compose logs -f app
 ```
 
-Nginx se ejecuta en su propio contenedor y reenvía las solicitudes a Next.js; la tienda sigue disponible en [http://localhost:3000](http://localhost:3000). El puerto de la app no se publica directamente en el host. Compose requiere `NEXT_PUBLIC_APP_URL`: en producción debe ser la URL pública completa, por ejemplo `https://tienda.example.com`, y `NEXTAUTH_URL` debe apuntar al mismo dominio. Stripe utiliza esa URL pública para volver a `/order/success` después del pago y a la tienda si se cancela; no configures `localhost` en producción. Para detener los servicios, usa `docker compose down`. Para desarrollo local, `DATABASE_URL` y `DIRECT_URL` apuntan al PostgreSQL de Docker. En Neon, la app usa `DATABASE_URL` (conexión pooled) y Prisma CLI usa `DIRECT_URL` (conexión directa para migraciones); la selección del adaptador es automática por hostname.
-
-### Autenticación
-
-La ruta `/account` permite registrarse e iniciar sesión con correo y contraseña o con Google OAuth. Las contraseñas se guardan como hashes bcrypt (nunca reversiblemente cifradas ni en texto plano), y el formulario de registro pide confirmar la contraseña. Para Google, crea un OAuth client de tipo Web y configura `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_SECRET` y `NEXTAUTH_URL=https://fish-store-jet.vercel.app` como variables en Vercel. En Google Cloud Console → **APIs & Services** → **Credentials** → tu OAuth client → **Authorized redirect URIs**, añade `https://fish-store-jet.vercel.app/api/auth/callback/google`; para desarrollo local añade `http://localhost:3000/api/auth/callback/google`. La URI debe usar el mismo dominio que `NEXTAUTH_URL` y no lleva barra final. Genera el secreto con `openssl rand -base64 32`. El login por contraseña funciona aunque Google no esté configurado. Es necesario iniciar sesión o crear una cuenta para comprar; los pedidos quedan asociados a la cuenta y aparecen en `/orders`.
-
-En `/account/settings` se puede actualizar el nombre, cambiar o añadir una contraseña y eliminar la cuenta. Al eliminarla, los pedidos se conservan por obligación operativa, se desvinculan de la cuenta y se anonimiza su correo. Cambiar la contraseña incrementa la versión de autenticación y revoca las sesiones existentes.
-
-El panel `/admin/accounts` permite a administradores buscar y paginar cuentas, cambiar roles y desactivar/reactivar accesos. Los cambios revocan las sesiones de esa cuenta; no se permite modificar la cuenta propia ni quitar el acceso al último administrador activo. Las cuentas nuevas empiezan como usuarios normales. Para crear el primer administrador, registra primero esa cuenta en la tienda y, con `DATABASE_URL` apuntando a la base de producción, ejecuta una vez:
+La tienda queda publicada en el puerto `3000` del host a través de Nginx. Para detener los servicios sin borrar los datos de PostgreSQL:
 
 ```bash
-npm run db:promote-admin -- admin@example.com
+docker compose down
 ```
 
-El comando activa la cuenta existente, le concede rol de administrador e invalida sus sesiones para que vuelva a iniciar sesión. No permite crear cuentas ni asignar roles desde el registro público.
+## Variables de entorno
 
-### Balanceadores y varias instancias
+La plantilla es [`.env.example`](./.env.example). No subas `.env`, claves ni cadenas de conexión al repositorio.
 
-La aplicación no necesita sesiones sticky: las sesiones JWT se validan en cualquier instancia. Configura todas las instancias con el mismo `AUTH_SECRET`, el mismo `DATABASE_URL` y la misma `NEXTAUTH_URL` pública, por ejemplo `https://tienda.example.com`; configura también `NEXT_PUBLIC_APP_URL` con la URL pública para enlaces y redirecciones. `NEXTAUTH_URL_INTERNAL` puede apuntar al servicio interno al que el proxy enruta (en Compose, `http://app:3000`). La URL pública debe usar HTTPS detrás de un balanceador TLS.
+| Variable | Uso |
+| --- | --- |
+| `DATABASE_URL` | Conexión usada por la aplicación. En Neon, usa la URL pooled. |
+| `DIRECT_URL` | Conexión directa para Prisma CLI y migraciones; puede coincidir con `DATABASE_URL` en local. |
+| `AUTH_SECRET` | Secreto fuerte para NextAuth/JWT; debe ser el mismo en todas las instancias. |
+| `NEXTAUTH_URL` | URL pública canónica de autenticación. |
+| `NEXTAUTH_URL_INTERNAL` | URL interna opcional para conexiones desde el servidor; en Compose es `http://app:3000`. |
+| `NEXT_PUBLIC_APP_URL` | URL pública para enlaces y redirecciones de Stripe. En producción debe ser HTTPS, no localhost. |
+| `STRIPE_SECRET_KEY` | Clave secreta de Stripe. Esta aplicación está diseñada para claves de prueba. |
+| `STRIPE_WEBHOOK_SECRET` | Secreto para comprobar la firma del webhook. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Credenciales OAuth opcionales; Google se habilita si están ambas presentes. |
+| `PERPLEXITY_API_KEY` | Clave de servidor opcional para el chat. Nunca debe llevar prefijo `NEXT_PUBLIC_`. |
+| `PERPLEXITY_ROUTER_MODEL` | ID de modelo permitido para esa clave en Perplexity Router. |
+| `DATABASE_POOL_MAX` | Tamaño del pool del adaptador PostgreSQL, entero entre 1 y 100; predeterminado `1`. |
+| `DEPLOYMENT_VERSION` | Identificador de compilación/versión usado por la imagen. |
 
-Configura el proxy (Nginx, ALB, Cloudflare u otro) para reenviar `Host`, `X-Forwarded-Host` y `X-Forwarded-Proto`, conservar las cookies y dirigir tráfico a instancias sanas. Usa `GET /api/health/live` para comprobar que el proceso responde y `GET /api/health/ready` para comprobar que también puede consultar la base de datos; el readiness responde `503` si la base de datos no está disponible. No expongas las instancias directamente a Internet.
+`VERCEL_URL` se utiliza como alternativa para detectar la URL desplegada cuando no se ha configurado una URL pública explícita. Configura `NEXT_PUBLIC_APP_URL` y `NEXTAUTH_URL` de forma coherente en producción; Stripe no debe recibir una dirección localhost para una tienda pública.
 
-Todas las instancias deben compartir una única base de datos PostgreSQL y ejecutar el mismo artefacto Docker construido una sola vez. Ejecuta `npm run db:deploy` **una sola vez por despliegue**, antes de activar la nueva versión, y no simultáneamente desde cada instancia. En Compose, el servicio de mantenimiento permite hacerlo con `docker compose run --rm migrate`; después, despliega esa imagen en los hosts o réplicas administrados por tu orquestador. El servicio Compose incluido publica un único puerto local y es para desarrollo/una instancia; para múltiples réplicas, configura el puerto y health check del servicio en tu orquestador o en cada host detrás del balanceador. La CI publica una imagen con un `deploymentId` derivado del commit para manejar la navegación durante despliegues graduales. Ajusta `DATABASE_POOL_MAX` según el máximo de conexiones admitido por la base: el valor limita el pool de cada proceso PostgreSQL (1–100, predeterminado 1), así que el total aproximado es el valor multiplicado por el número de instancias. Para Neon, administra el pool a través de su URL pooled. La app no usa ISR ni invalidación de caché; si se incorporan esas funciones, configura un backend de caché compartido entre instancias.
+### Habilitar Google OAuth
 
-Las páginas informativas están disponibles en `/privacy`, `/cookies` y `/terms`. La autenticación utiliza las cookies técnicas de sesión de NextAuth; el panel de consentimiento permite aceptar solo las necesarias o activar las métricas propias. Las métricas opcionales guardan únicamente totales diarios por página, sin IP, identificador de visitante o datos de cuenta. Sus textos legales son un borrador basado en las funciones actuales. Antes de publicar o aceptar ventas, completa y verifica la identidad legal y contacto del titular, los territorios de venta y las condiciones de envío, desistimiento, devoluciones y reembolsos con asesoramiento adecuado.
+Registra un cliente OAuth de tipo Web en Google Cloud Console. Añade como URI de redirección:
 
-### Idiomas y asistente de chat
-
-La tienda ofrece español (predeterminado), inglés, francés y alemán. La preferencia se guarda en la cookie `fish-store-locale`. El botón flotante usa el Perplexity Router API mediante el SDK oficial de OpenAI Chat Completions. Configura `PERPLEXITY_API_KEY` y `PERPLEXITY_ROUTER_MODEL` como variables de entorno del servidor (por ejemplo, en `.env` local o en las variables del servicio de producción). La clave nunca debe llevar el prefijo `NEXT_PUBLIC_` ni incluirse en el navegador.
-
-La documentación de Perplexity indica que Router está en *private preview*; si la consulta autenticada del catálogo responde `403`, solicita acceso a `api@perplexity.ai` antes de configurar el modelo.
-
-El modelo debe ser un ID `creator/model-name` obtenido del catálogo de Router consultado con **la misma clave** usada en producción: ese listado depende del tier de uso de la organización y es la allowlist de modelos para esa clave. Para consultar el catálogo sin guardar la respuesta en archivos:
-
-```bash
-test -n "$PERPLEXITY_API_KEY" || { echo "Exporta PERPLEXITY_API_KEY primero"; exit 1; }
-curl --fail-with-body --silent --show-error \
-  https://api.perplexity.ai/router/v1/models \
-  -H "Authorization: Bearer $PERPLEXITY_API_KEY"
+```text
+https://<tu-dominio>/api/auth/callback/google
 ```
 
-Copia un ID devuelto por esa consulta en `PERPLEXITY_ROUTER_MODEL`. No uses un slug de ejemplo ni selecciones un modelo solo porque aparezca en documentación pública: un ID no incluido en el catálogo de tu clave da `400`, y un modelo no habilitado para el tier da `402`. Cambiar de proveedor/modelo consiste en cambiar esa variable, sin cambiar el código. Para habilitar el asistente en una sesión local:
+Para desarrollo local, añade también:
 
-```bash
-export PERPLEXITY_API_KEY="..." # créala en https://console.perplexity.ai y no la compartas
-export PERPLEXITY_ROUTER_MODEL="<id copiado del catálogo autenticado>"
-npm run dev
+```text
+http://localhost:3000/api/auth/callback/google
 ```
 
-Con el servidor local en marcha, puedes probar el chat desde tu terminal (la clave sigue solo en el servidor):
+Configura el ID y el secreto de cliente en el entorno del servidor. El dominio debe coincidir con `NEXTAUTH_URL`.
+
+### Habilitar el asistente
+
+Configura `PERPLEXITY_API_KEY` y un `PERPLEXITY_ROUTER_MODEL` permitido por el catálogo asociado a esa clave. Router puede requerir habilitación del proveedor y los modelos disponibles dependen de la cuenta. El endpoint de chat limita el tamaño de solicitud y el número de mensajes; para exposición pública, añade limitación de frecuencia en el gateway o proxy.
+
+## Pruebas y calidad
 
 ```bash
-curl --fail-with-body --silent --show-error \
-  http://localhost:3000/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"locale":"en","messages":[{"role":"user","content":"Where can I see my orders?"}]}'
-```
-
-El servidor limita el tamaño de la conversación y el tiempo por solicitud. El SDK reintenta errores transitorios respetando `Retry-After`; si el Router sigue sobrecargado, la API de la tienda devuelve `429` y conserva ese encabezado. Las llamadas pueden generar cargos según modelo/tokens: configura límites de gasto en Perplexity. La aplicación no incluye rate limiting compartido entre instancias; para un despliegue público, limita la frecuencia en el proxy/API gateway o añade un limitador distribuido.
-
-### Conectar Neon con Vercel
-
-1. En Vercel, abre el proyecto y ve a **Storage** → **Create Database** → **Neon Postgres**. Crea la base y conéctala a `fish-store` al menos para **Production** (y Preview si vas a usar esas vistas previas).
-2. En Neon, abre **Connect** y copia las dos cadenas de la misma rama/base/rol. Usa la cadena **pooled** como `DATABASE_URL` y la cadena **direct** (sin `-pooler` en el host) como `DIRECT_URL`. Guárdalas en Vercel → **Settings** → **Environment Variables** para Production (y Preview si corresponde). No pongas las cadenas en el código ni las compartas públicamente.
-3. Para crear el esquema y los productos iniciales, configura ambas variables en tu `.env` local (no sobrescribas las claves Stripe) y ejecuta:
-
-   ```bash
-   npm run db:deploy
-   npm run db:seed
-   ```
-
-La migración `20261018162600_admin_accounts` añade a `User` el enum `role` (por defecto `USER`), el campo `isActive` (por defecto `true`) y un índice para filtrar cuentas; las cuentas existentes mantienen el acceso como usuarios normales. En Neon, aplica el cambio usando `DIRECT_URL` y `npm run db:deploy`, o deja que el Build Command de Vercel use el script `vercel-build`: en producción ejecuta `prisma migrate deploy` con `DIRECT_URL` y después el seed idempotente. No ejecutes la misma migración simultáneamente desde varias instancias. Una vez desplegado el esquema y creado el usuario desde la web, promuévelo con el comando anterior y con `DATABASE_URL` configurada para esa misma base de Neon.
-
-4. Deja el Build Command de Vercel en su valor predeterminado para que detecte `vercel-build`. Las previews no escriben en la base de producción. Redeploya la aplicación. Comprueba `https://fish-store-jet.vercel.app/api/products`: debería responder con el catálogo en JSON.
-
-Vercel/Neon no puede crear la base por el mero hecho de conocer la URL de la web; el paso de **Storage** requiere que inicies sesión y autorices la integración en tu cuenta. Si la integración completa ya añadió `DATABASE_URL`, añade manualmente `DIRECT_URL` desde Neon para que las migraciones usen una conexión directa.
-
-Después de añadir o cambiar modelos Prisma, crea la migración en desarrollo con `npm run db:migrate -- --name nombre_del_cambio` y aplícala en producción antes de desplegar la nueva versión. El seed actualiza el catálogo de demostración de forma idempotente y desactiva los productos de ejemplo anteriores sin borrar productos ni pedidos.
-
-El formulario crea una sesión de Stripe Checkout; el cliente no envía precios y el total se calcula con datos de la base de datos. Usa las claves `sk_test_...` y `whsec_...` de Stripe; esta demo rechaza claves Stripe live. Para probar el webhook localmente, ejecuta `stripe listen --forward-to localhost:3000/api/webhooks/stripe` y copia el secreto que Stripe CLI imprime a `STRIPE_WEBHOOK_SECRET`. El pedido solo se marca como pagado tras validar el pago completado.
-
-Al cambiar `prisma/schema.prisma`, genera una migración con `npm run db:migrate -- --name nombre_del_cambio`; aplica las migraciones pendientes localmente con `npm run db:deploy`.
-
-Para levantar app y base de datos en contenedores por primera vez:
-
-```bash
-docker compose up -d db
-docker compose run --rm migrate
-docker compose up -d --build app nginx
-```
-
-Compose reinicia los servicios si se detienen inesperadamente y comprueba la disponibilidad de la app con `/api/health/ready` antes de iniciar Nginx. Sigue la salida de la app con `docker compose logs -f app` o la de Nginx con `docker compose logs -f nginx`. Ejecuta el seed una vez después de que el servicio esté listo con `docker compose exec app npm run db:seed`. Nginx publica el puerto 3000 del host; para TLS en producción, termina HTTPS en un balanceador o proxy con certificados y configura allí la URL pública de la app.
-
-## Pruebas y CI
-
-```bash
-npm test
 npm run typecheck
+npm test
 npx playwright install chromium
 npm run test:e2e
+npm run build
 ```
 
-Vitest comprueba utilidades de carrito y rutas API, incluidas las métricas anónimas con consentimiento y la validación de la API de chat sin llamadas reales a Perplexity. Playwright comprueba la presentación de productos sin recortar, la confirmación de contraseña, las páginas legales y las preferencias de cookies. También realiza el checkout real con tarjeta de prueba si `STRIPE_SECRET_KEY` y una base PostgreSQL con migraciones y seed están configurados. Para habilitar ese flujo de pago en GitHub Actions, configura el secreto `STRIPE_TEST_SECRET_KEY`; las demás pruebas de navegador se ejecutan aunque no esté configurado. La CI ejecuta typecheck, tests unitarios, pruebas de navegador, build, `npm audit` (bloquea vulnerabilidades altas o críticas), análisis CodeQL con consultas ampliadas y revisión de nuevas dependencias en PR. Al hacer push a `main`, construye y publica la imagen en GitHub Container Registry si pasan los jobs requeridos.
+- **Vitest:** utilidades y endpoints, con casos de errores y validaciones.
+- **Playwright:** navegación, catálogo, carrito, cuenta, páginas legales, consentimiento y smoke tests. Para los casos que necesitan base de datos, prepara PostgreSQL, migraciones y seed; el flujo de pago depende además de credenciales de prueba de Stripe.
+- **Build y tipos:** verificados con el build de producción y el chequeo TypeScript.
 
-Tarjeta de prueba Stripe: `4242 4242 4242 4242`, cualquier fecha futura y CVC de tres dígitos.
+GitHub Actions ejecuta typecheck, tests unitarios, build, e2e, `npm audit` y CodeQL. En pull requests también revisa dependencias nuevas. Al hacer push a `main`, si pasan los jobs requeridos, construye y publica una imagen en GitHub Container Registry con etiqueta por commit y `latest`.
 
-## Despliegue en AWS
+## Despliegue
 
-El workflow publica `ghcr.io/<owner>/<repo>:latest`. Para AWS, usa ECS/ECS Express Mode y publica la imagen en ECR mediante una integración OIDC de GitHub Actions; App Runner solo está disponible para clientes actuales y no es la ruta recomendada para cuentas nuevas. Para un entorno real, provisiona PostgreSQL administrado, configura `DATABASE_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` y `NEXT_PUBLIC_APP_URL` como secretos/variables del servicio y configura el webhook HTTPS de Stripe. No uses claves de prueba en producción. El despliegue cloud requiere cuenta, permisos y secretos de AWS y se configura cuando estén disponibles.
+### Docker y proxy inverso
+
+El [`Dockerfile`](./Dockerfile) crea una imagen multi-stage de Next.js standalone y ejecuta el proceso como usuario sin privilegios. En Compose, Nginx expone el servicio y espera a que la app pase readiness. Para tráfico público, termina TLS en un proxy/balanceador con certificado válido y define la URL HTTPS pública en las variables.
+
+Los endpoints de operación son:
+
+- `GET /api/health/live`: el proceso está respondiendo.
+- `GET /api/health/ready`: el proceso puede consultar PostgreSQL.
+
+### Base de datos y migraciones
+
+Para PostgreSQL administrado, configura `DATABASE_URL` y `DIRECT_URL` desde el mismo proyecto/base/rol. Prisma CLI utiliza `DIRECT_URL` cuando existe. En Neon, usa la cadena pooled para la aplicación y la cadena directa para migraciones.
+
+Después de modificar el esquema:
+
+```bash
+npm run db:migrate -- --name nombre_del_cambio
+```
+
+En el despliegue, aplica migraciones pendientes con:
+
+```bash
+npm run db:deploy
+```
+
+Ejecuta las migraciones **una sola vez por despliegue**, antes de activar la nueva versión; no las ejecutes simultáneamente desde cada réplica. `npm run db:seed` es idempotente y carga/actualiza el catálogo de demostración.
+
+Para despliegues de producción con Vercel, `npm run vercel-build` ejecuta migraciones y seed cuando `VERCEL_ENV=production`, y después compila Next.js. Asegúrate de que `DIRECT_URL` y `DATABASE_URL` estén disponibles durante ese build y ten presente que las migraciones se aplican antes de publicar la nueva compilación.
+
+### Varias instancias
+
+Todas las réplicas deben compartir la misma base de datos, `AUTH_SECRET` y URL pública. No se requieren sesiones sticky porque la sesión de NextAuth es JWT. Configura el balanceador para conservar cookies y reenviar los encabezados de host/protocolo. Ajusta `DATABASE_POOL_MAX` según el límite de conexiones de PostgreSQL y el número de instancias. Compose está pensado para una instancia local; la orquestación de réplicas y TLS debe configurarse en la plataforma de despliegue.
+
+## Decisiones y límites conocidos
+
+- **Importes del lado servidor:** se evita confiar en precio/currency enviados por el cliente; se usan datos de PostgreSQL para construir las líneas de Stripe.
+- **Confirmación de pago:** webhook con firma verificada más comprobación de la sesión al volver a la página de éxito. Los pedidos comienzan en estado pendiente.
+- **Unidades menores para dinero:** se guardan importes enteros para evitar errores de redondeo en cálculos con decimales.
+- **Sesiones revocables:** `authVersion` permite invalidar JWT existentes tras cambio de contraseña o actualización administrativa.
+- **Estado de carrito en cliente:** ofrece continuidad entre páginas sin crear un carrito persistido en base de datos; un dispositivo/navegador mantiene su propio carrito.
+- **Métricas mínimas:** las métricas opcionales se agregan por día y ruta, y requieren consentimiento explícito.
+- **Operación del chat:** no hay rate limiting distribuido incluido; protéjelo en infraestructura antes de permitir uso público a gran escala.
+- **Legal y comercio:** los textos legales son un borrador técnico. Completa identidad del responsable, contacto, países de venta, envíos, devoluciones y demás obligaciones antes de operar.
+- **Stripe:** el proyecto rechaza el uso de claves live y no está preparado como tienda de producción para cobros reales.
+
+## Estructura del repositorio
+
+```text
+.
+├── .github/workflows/ci.yml    # CI, análisis y publicación de imagen
+├── e2e/                        # Pruebas Playwright
+├── nginx/                      # Configuración del proxy inverso
+├── prisma/
+│   ├── migrations/             # Historial de cambios del esquema
+│   ├── schema.prisma           # Modelos y relaciones
+│   ├── seed.ts                 # Catálogo inicial de demostración
+│   └── promote-admin.ts        # Promoción controlada de administrador
+├── public/peces/               # Ilustraciones del catálogo
+├── src/
+│   ├── app/                    # Páginas y Route Handlers
+│   ├── components/             # UI y proveedores compartidos
+│   ├── generated/prisma/       # Cliente Prisma generado
+│   ├── lib/                    # Integraciones y lógica compartida
+│   └── types/                  # Extensiones de tipos
+├── Dockerfile
+├── docker-compose.yml
+└── README.md
+```
+
+## Presentación breve para entrevista
+
+> Construí una tienda full-stack con Next.js y TypeScript, PostgreSQL y Prisma. Implementé autenticación con NextAuth y roles administrativos; checkout de Stripe con precios calculados en servidor y confirmación por webhook firmado; y pruebas con Vitest y Playwright. También preparé despliegue en contenedores con Nginx, health checks y CI en GitHub Actions. Una decisión clave fue separar la redirección de Stripe de la confirmación autoritativa del pago, que depende de eventos verificados y del estado persistido del pedido.

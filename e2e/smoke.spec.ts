@@ -21,6 +21,25 @@ test("the full catalog displays nineteen large product cards", async ({ page }) 
   expect(imageBox?.height).toBeGreaterThan(200);
 });
 
+test("unknown routes and invalid checkout links show the branded 404 page", async ({ page }) => {
+  for (const path of ["/this-page-does-not-exist", "/order/success"]) {
+    const response = await page.goto(path);
+
+    expect(response?.status()).toBe(404);
+    await expect(
+      page.getByRole("heading", {
+        name: "Esta página se ha perdido en el mar.",
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Volver a la tienda" }),
+    ).toHaveAttribute("href", "/");
+    await expect(
+      page.getByRole("link", { name: "Ver el pescado" }),
+    ).toHaveAttribute("href", "/#lonja");
+  }
+});
+
 test("language selector updates the page language and persists the choice", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Idioma").selectOption("fr");
@@ -108,6 +127,12 @@ test("legal information pages are available", async ({ page }) => {
     await page.goto(path);
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }
+
+  await page.goto("/privacy");
+  const privacyList = page.locator(".legal-content ul");
+  await expect(privacyList).toHaveCSS("list-style-type", "none");
+  await expect(privacyList.locator("li")).toHaveCount(5);
+  await expect(privacyList.getByText(/Al crear una cuenta/)).toBeVisible();
 });
 
 test("optional anonymous metrics require consent and can be disabled later", async ({ page }) => {

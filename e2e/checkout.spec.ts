@@ -35,6 +35,8 @@ test("customer pays for an item and sees the confirmed order", async ({ page }) 
   await page.getByRole("button", { name: /pay/i }).click();
 
   await expect(page).toHaveURL(/\/order\/success\?session_id=/, { timeout: 90_000 });
-  await expect(page.getByText("PAGO CONFIRMADO")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Gracias por elegir\nun poco de mar.",
+  );
   await expect(page.getByText("Pedido", { exact: false })).toBeVisible();
 });

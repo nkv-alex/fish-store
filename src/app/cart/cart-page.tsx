@@ -82,7 +82,6 @@ export default function CartPage({
     <main className="cart-page">
       <section className="cart-page-heading">
         <div>
-          <p className="eyebrow">{t("trustTaste")}</p>
           <h1>{t("cartTitle")}</h1>
           <p>{t("securePayment")}</p>
         </div>
@@ -202,7 +201,6 @@ export default function CartPage({
         </section>
 
         <aside className="cart-summary">
-          <p className="eyebrow">{t("trustTaste")}</p>
           <h2>{t("cartSummary")}</h2>
           <div className="cart-summary-total">
             <span>{t("total")}</span>

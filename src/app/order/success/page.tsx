@@ -48,9 +48,8 @@ export default async function SuccessPage({
   return (
     <main className="confirmation">
       <ClearCartOnSuccess />
-      <a className="brand" href="/">pez<span>c</span>ado</a>
+      <Link className="brand" href="/">pez<span>c</span>ado</Link>
       <div className="confirmation-mark">✓</div>
-      <p className="eyebrow">{t("paidEyebrow")}</p>
       <h1>{t("paidTitle")}</h1>
       <p className="confirmation-copy">{t("paidCopy")} <strong>{order.email}</strong>.</p>
       <div className="confirmation-order">
