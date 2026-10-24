@@ -25,7 +25,7 @@ test("customer pays for an item and sees the confirmed order", async ({ page }) 
     page.getByRole("heading", { level: 1, name: "Tu carrito" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Pagar con Stripe" }).click();
-  await expect(page).toHaveURL(/checkout\.stripe\.com/);
+  await expect(page).toHaveURL(/^https:\/\/checkout\.stripe\.com\//);
 
   await page.getByLabel(/email/i).fill("buyer@example.com");
   await page.getByLabel(/card number/i).fill("4242424242424242");
