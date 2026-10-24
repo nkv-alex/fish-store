@@ -16,6 +16,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "orders:cleanup-pending": "tsx scripts/cleanup-pending-orders.ts",
     "db:promote-admin": "tsx prisma/promote-admin.ts"
   },
   "dependencies": {

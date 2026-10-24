@@ -47,8 +47,14 @@ describe("credential authentication", () => {
       email: "buyer@example.com",
       image: null,
     });
-    expect(consumeRateLimit).toHaveBeenCalledWith({
-      scope: "login",
+    expect(consumeRateLimit).toHaveBeenNthCalledWith(1, {
+      scope: "login-email",
+      identifier: "buyer@example.com",
+      limit: 30,
+      windowMs: 15 * 60 * 1000,
+    });
+    expect(consumeRateLimit).toHaveBeenNthCalledWith(2, {
+      scope: "login-email-ip",
       identifier: "buyer@example.com:192.0.2.1",
       limit: 10,
       windowMs: 15 * 60 * 1000,
@@ -69,7 +75,9 @@ describe("credential authentication", () => {
   });
 
   it("rejects credentials after the rate limit is reached", async () => {
-    consumeRateLimit.mockResolvedValue({ allowed: false, retryAfterSeconds: 60 });
+    consumeRateLimit
+      .mockResolvedValueOnce({ allowed: true, retryAfterSeconds: 60 })
+      .mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 60 });
 
     await expect(
       authorizeCredentials({
@@ -80,6 +88,23 @@ describe("credential authentication", () => {
 
     expect(findUnique).not.toHaveBeenCalled();
     expect(comparePassword).not.toHaveBeenCalled();
+  });
+
+  it("enforces the per-email limit even when proxy IP headers are untrusted", async () => {
+    consumeRateLimit.mockResolvedValue({ allowed: false, retryAfterSeconds: 60 });
+
+    await expect(
+      authorizeCredentials({
+        email: "buyer@example.com",
+        password: "long-test-password",
+      }),
+    ).resolves.toBeNull();
+
+    expect(consumeRateLimit).toHaveBeenCalledOnce();
+    expect(consumeRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "login-email" }),
+    );
+    expect(findUnique).not.toHaveBeenCalled();
   });
 
   it("rejects inactive accounts and incorrect passwords", async () => {

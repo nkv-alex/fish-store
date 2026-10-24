@@ -44,6 +44,7 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_replace_me}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_replace_me}
       DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-1}
+      TRUST_PROXY_IP_HEADERS: "true"
       AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET to the same strong value on every app server}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-${NEXT_PUBLIC_APP_URL}}
       NEXTAUTH_URL_INTERNAL: ${NEXTAUTH_URL_INTERNAL:-http://app:3000}

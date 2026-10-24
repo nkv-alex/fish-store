@@ -202,7 +202,7 @@ Configura el valor `whsec_...` mostrado por Stripe CLI como `STRIPE_WEBHOOK_SECR
 
 ### Docker Compose con Nginx
 
-La configuración Compose utiliza PostgreSQL, un servicio de migración de mantenimiento, la aplicación Next.js y Nginx. Configura en `.env` las variables requeridas `AUTH_SECRET` y `NEXT_PUBLIC_APP_URL`; para desarrollo local, usa la URL `http://localhost:3000`. Nginx reenvía `X-Real-IP` al servidor para los límites de solicitudes.
+La configuración Compose utiliza PostgreSQL, un servicio de migración de mantenimiento, la aplicación Next.js y Nginx. Configura en `.env` las variables requeridas `AUTH_SECRET` y `NEXT_PUBLIC_APP_URL`; para desarrollo local, usa la URL `http://localhost:3000`. Nginx sobrescribe `X-Real-IP` y Compose activa `TRUST_PROXY_IP_HEADERS` para limitar solicitudes por IP.
 
 ```bash
 docker compose up -d db
@@ -237,6 +237,7 @@ La plantilla es [`.env.example`](./.env.example). No subas `.env`, claves ni cad
 | `PERPLEXITY_API_KEY` | Clave de servidor opcional para el chat. Nunca debe llevar prefijo `NEXT_PUBLIC_`. |
 | `PERPLEXITY_ROUTER_MODEL` | ID de modelo permitido para esa clave en Perplexity Router. |
 | `DATABASE_POOL_MAX` | Tamaño del pool del adaptador PostgreSQL, entero entre 1 y 100; predeterminado `1`. |
+| `TRUST_PROXY_IP_HEADERS` | Debe ser `true` solo cuando un proxy de confianza sobrescriba las cabeceras de IP. Predeterminado `false`; Compose lo activa detrás de Nginx. |
 | `DEPLOYMENT_VERSION` | Identificador de compilación/versión usado por la imagen. |
 
 `VERCEL_URL` se utiliza como alternativa para detectar la URL desplegada cuando no se ha configurado una URL pública explícita. Configura `NEXT_PUBLIC_APP_URL` y `NEXTAUTH_URL` de forma coherente en producción; Stripe no debe recibir una dirección localhost para una tienda pública.
@@ -259,7 +260,7 @@ Configura el ID y el secreto de cliente en el entorno del servidor. El dominio d
 
 ### Habilitar el asistente
 
-Configura `PERPLEXITY_API_KEY` y un `PERPLEXITY_ROUTER_MODEL` permitido por el catálogo asociado a esa clave. Router puede requerir habilitación del proveedor y los modelos disponibles dependen de la cuenta. El endpoint limita el tamaño de solicitud, el número de mensajes y las peticiones por dirección de cliente. Detrás de un proxy, configura `X-Real-IP` con la IP observada por el proxy; la aplicación usa ese encabezado para aplicar límites consistentes. Para internet público, asegúrate de que el proxy sobrescriba ese encabezado y no acepte su valor arbitrario del cliente.
+Configura `PERPLEXITY_API_KEY` y un `PERPLEXITY_ROUTER_MODEL` permitido por el catálogo asociado a esa clave. Router puede requerir habilitación del proveedor y los modelos disponibles dependen de la cuenta. El endpoint limita el tamaño de solicitud, el número de mensajes y las peticiones por dirección de cliente. La aplicación ignora las cabeceras de IP salvo que `TRUST_PROXY_IP_HEADERS=true`; activa esa opción solo detrás de un proxy controlado que sobrescriba `X-Real-IP` o `X-Forwarded-For`. Sin proxy confiable, el chat cae en un bucket compartido, por lo que se recomienda desplegarlo detrás de uno.
 
 ## Pruebas y calidad
 
@@ -306,6 +307,10 @@ npm run db:deploy
 
 Ejecuta las migraciones **una sola vez por despliegue**, antes de activar la nueva versión; no las ejecutes simultáneamente desde cada réplica. `npm run db:seed` es idempotente y carga/actualiza el catálogo de demostración. La migración de `RateLimitBucket` también debe aplicarse antes de activar la versión que limita login y chat.
 
+### Limpiar pedidos pendientes antiguos
+
+`npm run orders:cleanup-pending` elimina pedidos con estado `PENDING` creados hace más de 24 horas; las líneas se eliminan por la relación en cascada. Programa el comando en un scheduler (por ejemplo, cada hora) con `DATABASE_URL` apuntando a la base de datos correcta. No afecta pedidos pagados ni cancelados.
+
 Para despliegues de producción con Vercel, `npm run vercel-build` ejecuta migraciones y seed cuando `VERCEL_ENV=production`, y después compila Next.js. Asegúrate de que `DIRECT_URL` y `DATABASE_URL` estén disponibles durante ese build y ten presente que las migraciones se aplican antes de publicar la nueva compilación.
 
 ### Varias instancias
@@ -320,8 +325,9 @@ Todas las réplicas deben compartir la misma base de datos, `AUTH_SECRET` y URL 
 - **Sesiones revocables:** `authVersion` permite invalidar JWT existentes tras cambio de contraseña o actualización administrativa.
 - **Estado de carrito en cliente:** ofrece continuidad entre páginas sin crear un carrito persistido en base de datos; un dispositivo/navegador mantiene su propio carrito.
 - **Métricas mínimas:** las métricas opcionales se agregan por día y ruta, y requieren consentimiento explícito.
-- **Límites de solicitudes:** login y chat usan contadores de ventana fija persistidos en PostgreSQL, con claves SHA-256 y limpieza oportunista de buckets expirados. El login permite 10 intentos por dirección y correo cada 15 minutos; el chat permite 10 solicitudes por IP por minuto. El proxy debe proporcionar una IP de cliente confiable.
-- **Pedidos pendientes:** si falla la creación de una sesión de Stripe después de crear el pedido, el pedido puede quedarse en `PENDING`. Los pedidos no pagados deben supervisarse y limpiarse mediante una política de retención o una tarea operativa; el proyecto no incluye un job periódico de limpieza.
+- **Límites de solicitudes:** login y chat usan contadores de ventana fija persistidos en PostgreSQL, con claves SHA-256 y limpieza oportunista de buckets expirados. Login permite 30 intentos por correo cada 15 minutos y, con proxy confiable, otros 10 por combinación correo/IP. Chat permite 10 solicitudes por IP por minuto. La ventana fija puede permitir hasta el doble de intentos al cruzar el borde entre ventanas; es un compromiso sencillo para este proyecto.
+- **Confianza en la IP:** las cabeceras se ignoran por defecto. Activa `TRUST_PROXY_IP_HEADERS=true` solo detrás de un proxy controlado que las sobrescriba; sin proxy, la cuota IP del chat comparte un bucket entre clientes.
+- **Pedidos pendientes:** si Stripe falla después de crear el pedido, puede quedarse en `PENDING`. `npm run orders:cleanup-pending` elimina los pendientes de más de 24 horas cuando se programa en un scheduler; la aplicación no incluye un scheduler embebido.
 - **Legal y comercio:** los textos legales son un borrador técnico. Completa identidad del responsable, contacto, países de venta, envíos, devoluciones y demás obligaciones antes de operar.
 - **Stripe:** el proyecto rechaza el uso de claves live y no está preparado como tienda de producción para cobros reales.
 

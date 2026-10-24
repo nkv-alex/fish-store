@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getTrustedClientIp } from "@/lib/client-ip";
 import { locales } from "@/lib/i18n";
 import { consumeRateLimit } from "@/lib/rate-limit";
 
@@ -108,13 +109,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const clientIp =
-    request.headers.get("x-real-ip") ??
-    request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() ??
-    "unknown";
+  const clientIp = getTrustedClientIp((name) => request.headers.get(name));
   const rateLimit = await consumeRateLimit({
     scope: "chat",
-    identifier: clientIp,
+    identifier: clientIp ?? "untrusted-client",
     limit: 10,
     windowMs: 60_000,
   });

@@ -4,6 +4,7 @@ import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import { z } from "zod";
+import { getTrustedClientIp } from "@/lib/client-ip";
 import { getPrisma } from "@/lib/prisma";
 import { consumeRateLimit } from "@/lib/rate-limit";
 
@@ -18,19 +19,29 @@ const credentialsSchema = z.object({
 
 export async function authorizeCredentials(
   credentials: unknown,
-  clientIp = "unknown",
+  clientIp: string | null = null,
 ) {
   const parsed = credentialsSchema.safeParse(credentials);
   if (!parsed.success) return null;
 
   const email = parsed.data.email.trim().toLowerCase();
-  const rateLimit = await consumeRateLimit({
-    scope: "login",
-    identifier: `${email}:${clientIp}`,
-    limit: 10,
+  const emailLimit = await consumeRateLimit({
+    scope: "login-email",
+    identifier: email,
+    limit: 30,
     windowMs: 15 * 60 * 1000,
   });
-  if (!rateLimit.allowed) return null;
+  if (!emailLimit.allowed) return null;
+
+  if (clientIp) {
+    const ipLimit = await consumeRateLimit({
+      scope: "login-email-ip",
+      identifier: `${email}:${clientIp}`,
+      limit: 10,
+      windowMs: 15 * 60 * 1000,
+    });
+    if (!ipLimit.allowed) return null;
+  }
 
   const user = await getPrisma().user.findUnique({
     where: { email },
@@ -64,10 +75,7 @@ const providers: NextAuthOptions["providers"] = [
       password: { label: "Contraseña", type: "password" },
     },
     async authorize(credentials, request) {
-      const clientIp =
-        request.headers?.["x-real-ip"] ??
-        request.headers?.["x-forwarded-for"]?.split(",").at(-1)?.trim() ??
-        "unknown";
+      const clientIp = getTrustedClientIp((name) => request.headers?.[name]);
       return authorizeCredentials(credentials, clientIp);
     },
   }),
